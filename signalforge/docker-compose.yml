@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: signalforge_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: signalforge
+      POSTGRES_USER: signalforge
+      POSTGRES_PASSWORD: signalforge_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "signalforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: signalforge_redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: signalforge_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override to use Docker service names when running in Docker
+      POSTGRES_SERVER: postgres
+      REDIS_HOST: redis
+      DATABASE_URL_SYNC: postgresql://signalforge:signalforge_pass@postgres:5432/signalforge
+    volumes:
+      - ./backend:/app/backend
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      bash -c "uv run alembic upgrade head && uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  postgres_data:
+  redis_data:
