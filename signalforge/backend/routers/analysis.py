@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.session import get_db, AsyncSessionLocal
 from backend.db.models import Signal
-from backend.signal.models import AnalysisRequest, AnalysisResponse
+from backend.signal.models import AnalysisRequest, AnalysisResponse, StockTwitsSentiment
 from backend.agents.graph import analysis_graph
+from backend.data.stocktwits_data import fetch_stocktwits_sentiment
 from backend.config import settings
 import logging
 from datetime import datetime
@@ -54,6 +55,10 @@ async def analyze_ticker(
         if not signal_output or not confidence_breakdown:
             logger.error(f"Missing signal output or confidence breakdown for {request.ticker}")
             raise HTTPException(status_code=500, detail="Analysis completed but results are incomplete")
+
+        # Fetch StockTwits sentiment (non-blocking, informational only)
+        sentiment_raw = await fetch_stocktwits_sentiment(request.ticker.upper())
+        signal_output["stocktwits_sentiment"] = StockTwitsSentiment(**sentiment_raw.__dict__) if sentiment_raw else None
 
         # Save signal to database (background task)
         background_tasks.add_task(

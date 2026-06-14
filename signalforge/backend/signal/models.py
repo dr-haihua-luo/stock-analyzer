@@ -3,12 +3,37 @@ from typing import Optional
 from datetime import datetime
 
 
+class StockTwitsSentiment(BaseModel):
+    """
+    Informational only. Never used in signal scoring.
+    Displayed separately at the bottom of the dashboard.
+    """
+    ticker: str
+    source: str                       # "firestream" | "public_stream" | "unavailable"
+    bullish_pct: Optional[float]
+    bearish_pct: Optional[float]
+    neutral_pct: Optional[float]
+    sentiment_label: Optional[str]    # "BULLISH" | "BEARISH" | "NEUTRAL"
+    sentiment_score: Optional[float]  # Firestream 0-100 score; None for public stream
+    message_volume_label: Optional[str]
+    message_volume_24h: Optional[float]
+    participation_score: Optional[float]
+    total_messages_sampled: Optional[int]
+    labeled_messages: Optional[int]
+    fetched_at: str
+    disclaimer: str = (
+        "Social sentiment is informational only and does not affect "
+        "the BUY/HOLD/SELL signal or confidence score."
+    )
+
+
 class SignalOutput(BaseModel):
     """Final signal output from the analysis pipeline."""
     ticker: str = Field(description="Stock ticker symbol")
     signal: str = Field(description="BUY, HOLD, or SELL signal")
     confidence: float = Field(description="Confidence score from 0.0 to 1.0")
     timestamp: datetime = Field(description="Analysis timestamp")
+    stocktwits_sentiment: Optional[StockTwitsSentiment] = None
 
 
 class ConfidenceBreakdown(BaseModel):

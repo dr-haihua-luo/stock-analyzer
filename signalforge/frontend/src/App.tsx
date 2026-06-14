@@ -7,6 +7,7 @@ import SectorHeatmap from './components/SectorHeatmap';
 import StockChart from './components/StockChart';
 import ConfidenceBreakdown from './components/ConfidenceBreakdown';
 import StreamingLog from './components/StreamingLog';
+import SentimentPanel from './components/SentimentPanel';
 
 function App() {
   const [ticker, setTicker] = useState('AAPL');
@@ -90,6 +91,13 @@ function App() {
 
             {/* Streaming Log */}
             <StreamingLog ticker={ticker} />
+
+            {/* StockTwits Sentiment Panel - Full width at bottom */}
+            <SentimentPanel
+              sentiment={analysisResult.signal?.stocktwits_sentiment}
+              ticker={ticker}
+              loading={loading}
+            />
           </>
         ) : (
           <>
