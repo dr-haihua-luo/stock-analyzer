@@ -66,14 +66,10 @@ async def _fetch_public_stream(ticker: str) -> SentimentResult:
     url = f"{PUBLIC_STREAM_BASE}/streams/symbol/{ticker}.json"
     logger.info("Calling StockTwits public stream for %s", ticker)
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://stocktwits.com/",
-        }
+        # Use default httpx client - Cloudflare may block Python clients in some environments.
+        # The code handles 403 gracefully by returning source="unavailable"
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
-            resp = await client.get(url, headers=headers)
+            resp = await client.get(url)
 
         if resp.status_code == 404:
             logger.warning("StockTwits: ticker %s not found on public stream", ticker)
