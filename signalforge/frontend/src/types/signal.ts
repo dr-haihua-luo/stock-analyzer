@@ -1,11 +1,10 @@
 export interface StockTwitsSentiment {
   ticker: string;
-  source: 'firestream' | 'public_stream' | 'unavailable';
+  source: 'public_stream' | 'unavailable';
   bullish_pct: number | null;
   bearish_pct: number | null;
   neutral_pct: number | null;
   sentiment_label: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | null;
-  sentiment_score: number | null;
   message_volume_label: string | null;
   message_volume_24h: number | null;
   participation_score: number | null;

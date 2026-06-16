@@ -5,7 +5,6 @@ from backend.db.models import Signal
 from backend.signal.models import AnalysisRequest, AnalysisResponse, StockTwitsSentiment
 from backend.agents.graph import analysis_graph
 from backend.data.stocktwits_data import fetch_stocktwits_sentiment
-from backend.config import settings
 import logging
 from datetime import datetime
 

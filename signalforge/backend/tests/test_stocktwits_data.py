@@ -1,6 +1,12 @@
+import os
+import sys
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from backend.data.stocktwits_data import (
+
+# Add the backend directory to the path so we can import from it
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from data.stocktwits_data import (
     fetch_stocktwits_sentiment,
 )
 
@@ -25,11 +31,7 @@ async def test_public_stream_success():
     mock_resp.status_code = 200
     mock_resp.json.return_value = PUBLIC_STREAM_RESPONSE
 
-    with patch("backend.data.stocktwits_data.settings") as mock_settings, \
-         patch("httpx.AsyncClient") as mock_client_cls:
-        mock_settings.STOCKTWITS_USERNAME = ""
-        mock_settings.STOCKTWITS_PASSWORD = ""
-        mock_settings.STOCKTWITS_ACCESS_TOKEN = ""
+    with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=mock_resp
         )
@@ -49,38 +51,12 @@ async def test_public_stream_success():
 
 
 @pytest.mark.asyncio
-async def test_public_stream_no_credentials():
-    """Test public stream works without credentials."""
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = PUBLIC_STREAM_RESPONSE
-
-    with patch("backend.data.stocktwits_data.settings") as mock_settings, \
-         patch("httpx.AsyncClient") as mock_client_cls:
-        mock_settings.STOCKTWITS_USERNAME = ""
-        mock_settings.STOCKTWITS_PASSWORD = ""
-        mock_settings.STOCKTWITS_ACCESS_TOKEN = ""
-        mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
-            return_value=mock_resp
-        )
-        result = await fetch_stocktwits_sentiment("AAPL")
-
-    assert result.source == "public_stream"
-    assert result.total_messages_sampled == 5
-    assert result.labeled_messages == 3
-
-
-@pytest.mark.asyncio
 async def test_public_stream_404_returns_unavailable():
     """Test 404 response returns unavailable sentiment."""
     mock_resp = MagicMock()
     mock_resp.status_code = 404
 
-    with patch("backend.data.stocktwits_data.settings") as mock_settings, \
-         patch("httpx.AsyncClient") as mock_client_cls:
-        mock_settings.STOCKTWITS_USERNAME = ""
-        mock_settings.STOCKTWITS_PASSWORD = ""
-        mock_settings.STOCKTWITS_ACCESS_TOKEN = ""
+    with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=mock_resp
         )
@@ -98,11 +74,7 @@ async def test_public_stream_429_rate_limited():
     mock_resp = MagicMock()
     mock_resp.status_code = 429
 
-    with patch("backend.data.stocktwits_data.settings") as mock_settings, \
-         patch("httpx.AsyncClient") as mock_client_cls:
-        mock_settings.STOCKTWITS_USERNAME = ""
-        mock_settings.STOCKTWITS_PASSWORD = ""
-        mock_settings.STOCKTWITS_ACCESS_TOKEN = ""
+    with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=mock_resp
         )
@@ -119,11 +91,7 @@ async def test_public_stream_empty_messages():
     mock_resp.status_code = 200
     mock_resp.json.return_value = {"messages": []}
 
-    with patch("backend.data.stocktwits_data.settings") as mock_settings, \
-         patch("httpx.AsyncClient") as mock_client_cls:
-        mock_settings.STOCKTWITS_USERNAME = ""
-        mock_settings.STOCKTWITS_PASSWORD = ""
-        mock_settings.STOCKTWITS_ACCESS_TOKEN = ""
+    with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=mock_resp
         )
@@ -136,11 +104,7 @@ async def test_public_stream_empty_messages():
 @pytest.mark.asyncio
 async def test_network_failure_returns_unavailable():
     """Test network error returns unavailable sentiment."""
-    with patch("backend.data.stocktwits_data.settings") as mock_settings, \
-         patch("httpx.AsyncClient") as mock_client_cls:
-        mock_settings.STOCKTWITS_USERNAME = ""
-        mock_settings.STOCKTWITS_PASSWORD = ""
-        mock_settings.STOCKTWITS_ACCESS_TOKEN = ""
+    with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
             side_effect=Exception("connection refused")
         )
@@ -164,11 +128,7 @@ async def test_all_bearish():
         ]
     }
 
-    with patch("backend.data.stocktwits_data.settings") as mock_settings, \
-         patch("httpx.AsyncClient") as mock_client_cls:
-        mock_settings.STOCKTWITS_USERNAME = ""
-        mock_settings.STOCKTWITS_PASSWORD = ""
-        mock_settings.STOCKTWITS_ACCESS_TOKEN = ""
+    with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=mock_resp
         )
@@ -193,11 +153,7 @@ async def test_mixed_sentiment_neutral():
         ]
     }
 
-    with patch("backend.data.stocktwits_data.settings") as mock_settings, \
-         patch("httpx.AsyncClient") as mock_client_cls:
-        mock_settings.STOCKTWITS_USERNAME = ""
-        mock_settings.STOCKTWITS_PASSWORD = ""
-        mock_settings.STOCKTWITS_ACCESS_TOKEN = ""
+    with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client_cls.return_value.__aenter__.return_value.get = AsyncMock(
             return_value=mock_resp
         )

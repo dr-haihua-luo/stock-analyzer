@@ -17,8 +17,6 @@ from datetime import datetime, timezone
 
 import httpx
 
-from backend.config import settings
-
 logger = logging.getLogger(__name__)
 
 PUBLIC_STREAM_BASE = "https://api.stocktwits.com/api/2"
@@ -28,12 +26,11 @@ TIMEOUT = 8.0  # seconds
 @dataclass
 class SentimentResult:
     ticker: str
-    source: str                      # "firestream" | "public_stream" | "unavailable"
+    source: str                      # "public_stream" | "unavailable"
     bullish_pct: Optional[float]     # 0.0–100.0
     bearish_pct: Optional[float]
     neutral_pct: Optional[float]
     sentiment_label: Optional[str]   # "BULLISH" | "BEARISH" | "NEUTRAL"
-    sentiment_score: Optional[float] # 0–100 normalized score from Firestream
     message_volume_label: Optional[str]   # "LOW" | "NORMAL" | "HIGH"
     message_volume_24h: Optional[float]
     participation_score: Optional[float]
@@ -55,7 +52,7 @@ async def fetch_stocktwits_sentiment(ticker: str) -> SentimentResult:
 
 
 # ---------------------------------------------------------------------------
-# Tier 2: Public Stream API (no auth required)
+# Public Stream API (no auth required)
 # ---------------------------------------------------------------------------
 async def _fetch_public_stream(ticker: str) -> SentimentResult:
     """
@@ -67,13 +64,15 @@ async def _fetch_public_stream(ticker: str) -> SentimentResult:
     Messages without a tag count toward the "neutral" bucket.
     """
     url = f"{PUBLIC_STREAM_BASE}/streams/symbol/{ticker}.json"
-    params: dict = {"limit": 30}
-    if settings.STOCKTWITS_ACCESS_TOKEN:
-        params["access_token"] = settings.STOCKTWITS_ACCESS_TOKEN
-
+    logger.info("Calling StockTwits public stream for %s", ticker)
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            resp = await client.get(url, params=params)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        async with httpx.AsyncClient(timeout=TIMEOUT, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(url)
 
         if resp.status_code == 404:
             logger.warning("StockTwits: ticker %s not found on public stream", ticker)
@@ -139,7 +138,6 @@ async def _fetch_public_stream(ticker: str) -> SentimentResult:
             bearish_pct=bearish_pct,
             neutral_pct=neutral_pct,
             sentiment_label=label,
-            sentiment_score=None,       # not available from public stream
             message_volume_label=None,
             message_volume_24h=None,
             participation_score=None,
@@ -160,7 +158,6 @@ def _unavailable(ticker: str) -> SentimentResult:
         bearish_pct=None,
         neutral_pct=None,
         sentiment_label=None,
-        sentiment_score=None,
         message_volume_label=None,
         message_volume_24h=None,
         participation_score=None,

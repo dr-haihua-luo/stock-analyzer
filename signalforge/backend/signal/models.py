@@ -9,12 +9,11 @@ class StockTwitsSentiment(BaseModel):
     Displayed separately at the bottom of the dashboard.
     """
     ticker: str
-    source: str                       # "firestream" | "public_stream" | "unavailable"
+    source: str                       # "public_stream" | "unavailable"
     bullish_pct: Optional[float]
     bearish_pct: Optional[float]
     neutral_pct: Optional[float]
     sentiment_label: Optional[str]    # "BULLISH" | "BEARISH" | "NEUTRAL"
-    sentiment_score: Optional[float]  # Firestream 0-100 score; None for public stream
     message_volume_label: Optional[str]
     message_volume_24h: Optional[float]
     participation_score: Optional[float]

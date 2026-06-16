@@ -27,9 +27,7 @@ export default function SentimentPanel({ sentiment, ticker, loading }: Props) {
     !sentiment || sentiment.source === 'unavailable';
 
   const sourceLabel =
-    sentiment?.source === 'firestream'
-      ? 'Firestream v2 (24h aggregate)'
-      : sentiment?.source === 'public_stream'
+    sentiment?.source === 'public_stream'
       ? `Public stream (last ${sentiment.total_messages_sampled ?? '?'} posts)`
       : null;
 
@@ -68,8 +66,7 @@ export default function SentimentPanel({ sentiment, ticker, loading }: Props) {
         <div className="text-center py-6 text-gray-500 text-sm">
           StockTwits sentiment data unavailable for {ticker}.
           <br />
-          Check STOCKTWITS_USERNAME / STOCKTWITS_PASSWORD in .env,
-          or the ticker may have low social activity.
+          The ticker may have low social activity or the API may be temporarily unavailable.
         </div>
       ) : (
         <>
