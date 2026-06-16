@@ -49,6 +49,18 @@ async def test_public_stream_success():
     # bullish_ratio = 2/3 = 0.67 >= 0.6 → BULLISH
     assert result.sentiment_label == "BULLISH"
 
+    assert result.source == "public_stream"
+    assert result.total_messages_sampled == 5
+    assert result.labeled_messages == 3
+    # 2 bullish out of 5 total = 40%
+    assert result.bullish_pct == 40.0
+    # 1 bearish out of 5 total = 20%
+    assert result.bearish_pct == 20.0
+    # 2 unlabeled out of 5 total = 40%
+    assert result.neutral_pct == 40.0
+    # bullish_ratio = 2/3 = 0.67 >= 0.6 → BULLISH
+    assert result.sentiment_label == "BULLISH"
+
 
 @pytest.mark.asyncio
 async def test_public_stream_404_returns_unavailable():

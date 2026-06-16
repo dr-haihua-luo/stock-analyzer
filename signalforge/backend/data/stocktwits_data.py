@@ -70,9 +70,10 @@ async def _fetch_public_stream(ticker: str) -> SentimentResult:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://stocktwits.com/",
         }
-        async with httpx.AsyncClient(timeout=TIMEOUT, headers=headers, follow_redirects=True) as client:
-            resp = await client.get(url)
+        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
 
         if resp.status_code == 404:
             logger.warning("StockTwits: ticker %s not found on public stream", ticker)
