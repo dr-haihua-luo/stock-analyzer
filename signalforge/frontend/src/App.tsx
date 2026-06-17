@@ -6,7 +6,6 @@ import MarketOverview from './components/MarketOverview';
 import SectorHeatmap from './components/SectorHeatmap';
 import StockChart from './components/StockChart';
 import ConfidenceBreakdown from './components/ConfidenceBreakdown';
-import StreamingLog from './components/StreamingLog';
 import SentimentPanel from './components/SentimentPanel';
 
 function App() {
@@ -88,9 +87,6 @@ function App() {
                 ← Back to Search
               </button>
             </div>
-
-            {/* Streaming Log */}
-            <StreamingLog ticker={ticker} />
 
             {/* StockTwits Sentiment Panel - Full width at bottom */}
             <SentimentPanel
