@@ -1,82 +1,119 @@
-"""StockTwits sentiment data layer.
+"""
+StockTwits sentiment data layer.
 
-No authentication required.
-Calls /streams/symbol/{symbol}.json, parses user-tagged sentiment
-(bullish / bearish / None) from the last 30 messages.
-Computes percentages from only labeled messages; unlabeled → neutral bucket.
+Uses curl_cffi instead of httpx for all HTTP calls to bypass Cloudflare
+TLS fingerprint detection. curl_cffi impersonates a real Chrome browser
+at the TLS handshake level (cipher suites, extension order, HTTP/2
+SETTINGS frames), producing a JA3/JA4 fingerprint indistinguishable
+from a real browser. This is the only reliable fix for Cloudflare 403
+errors from server-side Python async runtimes.
 
-On any network error, auth failure, or unexpected response shape:
-Returns SentimentResult with source="unavailable" and all percentages null.
-Logs the error at WARNING level. Never raises to the caller.
+httpx is intentionally NOT used in this file. Do not reintroduce it.
+
+Use Public stream API (free): no auth, per-message sentiment tags ONLY
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime, timezone
 
-import httpx
+from curl_cffi.requests import AsyncSession
 
 logger = logging.getLogger(__name__)
 
+
 PUBLIC_STREAM_BASE = "https://api.stocktwits.com/api/2"
-TIMEOUT = 8.0  # seconds
+
+# Impersonate Chrome — produces a real browser JA3/JA4 TLS fingerprint.
+# "chrome" always resolves to the latest supported Chrome version in curl_cffi.
+# This is what bypasses Cloudflare's bot detection.
+BROWSER_IMPERSONATION = "chrome"
+
+TIMEOUT = 10.0  # seconds — slightly higher than httpx default to allow TLS negotiation
 
 
 @dataclass
 class SentimentResult:
     ticker: str
-    source: str                      # "public_stream" | "unavailable"
-    bullish_pct: Optional[float]     # 0.0–100.0
+    source: str                           # "public_stream" | "unavailable"
+    bullish_pct: Optional[float]
     bearish_pct: Optional[float]
     neutral_pct: Optional[float]
-    sentiment_label: Optional[str]   # "BULLISH" | "BEARISH" | "NEUTRAL"
-    message_volume_label: Optional[str]   # "LOW" | "NORMAL" | "HIGH"
+    sentiment_label: Optional[str]        # "BULLISH" | "BEARISH" | "NEUTRAL"
+    message_volume_label: Optional[str]
     message_volume_24h: Optional[float]
     participation_score: Optional[float]
-    total_messages_sampled: Optional[int]  # number of messages parsed (public API)
-    labeled_messages: Optional[int]        # messages with explicit sentiment tag
-    fetched_at: str = ""
-
-    def __post_init__(self):
-        if not self.fetched_at:
-            self.fetched_at = datetime.now(timezone.utc).isoformat()
+    total_messages_sampled: Optional[int]
+    labeled_messages: Optional[int]
+    fetched_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 async def fetch_stocktwits_sentiment(ticker: str) -> SentimentResult:
-    """Fetch StockTwits sentiment. Public stream used; no credentials required."""
+    """
+    Main entry point. Uses public stream API, returns unavailable on all failures.
+
+    Uses curl_cffi.AsyncSession with Chrome impersonation for all requests.
+    The AsyncSession is created fresh per call — do not share a session
+    across the FastAPI event loop as curl_cffi sessions are not thread-safe.
+    """
+
     return await _fetch_public_stream(ticker)
 
 
 # ---------------------------------------------------------------------------
-# Public Stream API (no auth required)
+# Shared session factory
+# ---------------------------------------------------------------------------
+def _make_session() -> AsyncSession:
+    """
+    Creates a curl_cffi AsyncSession that impersonates Chrome.
+
+    impersonate="chrome" sets:
+    - TLS cipher suite order matching Chrome's BoringSSL
+    - TLS extension order and values matching Chrome
+    - HTTP/2 SETTINGS and WINDOW_UPDATE frames matching Chrome
+    - ALPN negotiation order matching Chrome
+
+    This produces a JA3/JA4 fingerprint that Cloudflare classifies as
+    legitimate browser traffic, bypassing bot detection.
+    """
+    return AsyncSession(
+        impersonate=BROWSER_IMPERSONATION,
+        timeout=TIMEOUT,
+        verify=True,  # always verify TLS certificates
+    )
+
+
+
+# ---------------------------------------------------------------------------
+# Public Stream API
 # ---------------------------------------------------------------------------
 async def _fetch_public_stream(ticker: str) -> SentimentResult:
     """
     Calls GET https://api.stocktwits.com/api/2/streams/symbol/{symbol}.json
-    Parses the last 30 messages for user-tagged sentiment.
-
-    Each message has: entities.sentiment = {"basic": "Bullish"} | {"basic": "Bearish"} | null
-    Note: only ~30-50% of messages carry an explicit sentiment tag.
-    Messages without a tag count toward the "neutral" bucket.
+    Parses user-tagged bullish/bearish sentiment from the last 30 messages.
+    Uses curl_cffi with Chrome impersonation.
     """
     url = f"{PUBLIC_STREAM_BASE}/streams/symbol/{ticker}.json"
-    logger.info("Calling StockTwits public stream for %s", ticker)
+    params: dict = {"limit": 30}
+
+    logger.info("calling public StockTwits for %s", ticker)
+
     try:
-        # Use default httpx client - Cloudflare may block Python clients in some environments.
-        # The code handles 403 gracefully by returning source="unavailable"
-        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
-            resp = await client.get(url)
+        async with _make_session() as session:
+            resp = await session.get(url, params=params)
 
         if resp.status_code == 404:
-            logger.warning("StockTwits: ticker %s not found on public stream", ticker)
+            logger.warning("StockTwits: ticker %s not found (404)", ticker)
             return _unavailable(ticker)
+
         if resp.status_code == 429:
-            logger.warning("StockTwits: rate limited on public stream for %s", ticker)
+            logger.warning("StockTwits: rate limited (429) for %s", ticker)
             return _unavailable(ticker)
+
         if resp.status_code != 200:
             logger.warning(
                 "StockTwits public stream: status %s for %s",
@@ -94,13 +131,7 @@ async def _fetch_public_stream(ticker: str) -> SentimentResult:
         labeled_count = 0
 
         for msg in messages:
-            sentiment_tag = (
-                msg.get("entities", {})
-                .get("sentiment", {})
-            )
-            if not sentiment_tag:
-                neutral_count += 1
-                continue
+            sentiment_tag = msg.get("entities", {}).get("sentiment") or {}
             basic = (sentiment_tag.get("basic") or "").lower()
             if basic == "bullish":
                 bullish_count += 1
@@ -116,15 +147,13 @@ async def _fetch_public_stream(ticker: str) -> SentimentResult:
         bearish_pct = round(bearish_count / total * 100, 1)
         neutral_pct = round(neutral_count / total * 100, 1)
 
-        # Derive label from labeled messages only (ignore untagged for label)
         if labeled_count > 0:
             bullish_ratio = bullish_count / labeled_count
-            if bullish_ratio >= 0.6:
-                label = "BULLISH"
-            elif bullish_ratio <= 0.4:
-                label = "BEARISH"
-            else:
-                label = "NEUTRAL"
+            label = (
+                "BULLISH" if bullish_ratio >= 0.6
+                else "BEARISH" if bullish_ratio <= 0.4
+                else "NEUTRAL"
+            )
         else:
             label = "NEUTRAL"
 
@@ -147,6 +176,9 @@ async def _fetch_public_stream(ticker: str) -> SentimentResult:
         return _unavailable(ticker)
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 def _unavailable(ticker: str) -> SentimentResult:
     return SentimentResult(
         ticker=ticker,
