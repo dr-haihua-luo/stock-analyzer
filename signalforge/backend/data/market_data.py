@@ -9,7 +9,7 @@ from urllib3.util.retry import Retry
 from backend.config import settings
 from backend.cache.redis_client import redis_client
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,20 @@ class MarketData:
         """Get VIX data (fear and greed index proxy)."""
         cache_key = "vix_data"
         cached_data = await self.cache.get(cache_key)
-        # Validate that cached data is in expected format before using it
+        # Validate that cached data is in expected format and timestamp is within 60 minutes
         if cached_data and isinstance(cached_data, dict) and "vix" in cached_data:
-            return cached_data
+            cached_ts = cached_data.get("timestamp")
+            if cached_ts:
+                try:
+                    cached_time = datetime.fromisoformat(cached_ts.replace("Z", "+00:00"))
+                    age_seconds = (datetime.now(timezone.utc) - cached_time).total_seconds()
+                    if age_seconds < 3600:  # Less than 60 minutes old
+                        logger.info(f"Returning cached VIX data (age: {age_seconds:.0f}s)")
+                        return cached_data
+                    else:
+                        logger.info(f"VIX cache expired (age: {age_seconds:.0f}s > 3600s), fetching fresh data")
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Failed to parse cached VIX timestamp: {e}")
 
         try:
             # Fetch VIX data (^VIX) using direct API call with proper headers to avoid JSON decode errors
@@ -52,7 +63,7 @@ class MarketData:
             response.raise_for_status()
             data_json = response.json()
 
-            logger.info(f"VIX data received: {len(data_json.get('chart', {}).get('result', []))} {response.text}")
+            logger.info(f"VIX data received: {len(data_json.get('chart', {}).get('result', []))} {len(response.text)}")
 
             if not data_json['chart']['result']:
                 raise ValueError("No VIX data retrieved")
@@ -65,8 +76,13 @@ class MarketData:
             if not timestamps or not indicators['close']:
                 raise ValueError("No VIX price data available")
 
-            current_vix = indicators['close'][-1]
-            prev_close = indicators['close'][-2] if len(indicators['close']) > 1 else current_vix
+            # Filter out None values to get valid closes
+            valid_closes = [c for c in indicators['close'] if c is not None]
+            if not valid_closes:
+                raise ValueError("No valid VIX close prices available")
+
+            current_vix = valid_closes[-1]
+            prev_close = valid_closes[-2] if len(valid_closes) > 1 else current_vix
 
             # Simple fear/greed interpretation (lower VIX = less fear)
             # Normalize to 0-100 scale where 0 is extreme fear, 100 is extreme greed
@@ -77,7 +93,7 @@ class MarketData:
                 "vix": round(current_vix, 2),
                 "vix_change": round(((current_vix - prev_close) / prev_close) * 100, 2),
                 "fear_greed_score": round(fear_greed_score, 2),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "data_points": len(timestamps)
             }
 
@@ -88,16 +104,25 @@ class MarketData:
 
         except Exception as e:
             logger.error(f"Error fetching VIX data: {e}")
-            # Return cached data if available and valid, otherwise return default data to prevent failure
+            # Return cached data if available and timestamp is valid (within 60 minutes)
             if cached_data and isinstance(cached_data, dict) and "vix" in cached_data:
-                return cached_data
+                cached_ts = cached_data.get("timestamp")
+                if cached_ts:
+                    try:
+                        cached_time = datetime.fromisoformat(cached_ts.replace("Z", "+00:00"))
+                        age_seconds = (datetime.now(timezone.utc) - cached_time).total_seconds()
+                        if age_seconds < 3600:
+                            logger.info(f"Using cached VIX data on error (age: {age_seconds:.0f}s)")
+                            return cached_data
+                    except (ValueError, TypeError):
+                        pass
             # Return default VIX data to allow application to continue
             logger.warning("Returning default VIX data due to fetch failure")
             return {
                 "vix": 20.0,
                 "vix_change": 0.0,
                 "fear_greed_score": 50.0,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "data_points": 0
             }
 
@@ -105,9 +130,20 @@ class MarketData:
         """Get yield curve data (10Y-2Y spread) via FRED."""
         cache_key = "yield_curve_data"
         cached_data = await self.cache.get(cache_key)
-        # Validate that cached data is in expected format before using it
+        # Validate that cached data is in expected format and timestamp is within 60 minutes
         if cached_data and isinstance(cached_data, dict) and "ten_year_rate" in cached_data:
-            return cached_data
+            cached_ts = cached_data.get("timestamp")
+            if cached_ts:
+                try:
+                    cached_time = datetime.fromisoformat(cached_ts.replace("Z", "+00:00"))
+                    age_seconds = (datetime.now(timezone.utc) - cached_time).total_seconds()
+                    if age_seconds < 3600:  # Less than 60 minutes old
+                        logger.debug(f"Returning cached yield curve data (age: {age_seconds:.0f}s)")
+                        return cached_data
+                    else:
+                        logger.info(f"Yield curve cache expired (age: {age_seconds:.0f}s > 3600s), fetching fresh data")
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Failed to parse cached yield curve timestamp: {e}")
 
         try:
             # Using FRED API for 10Y and 2Y Treasury rates
@@ -140,7 +176,7 @@ class MarketData:
             ten_year_response.raise_for_status()
             ten_year_json = ten_year_response.json()
 
-            logger.info(f"10-year treasury data received: {len(ten_year_json.get('chart', {}).get('result', []))} {ten_year_response.text}")
+            logger.info(f"10-year treasury data received: {len(ten_year_json.get('chart', {}).get('result', []))} {len(ten_year_response.text)}")
 
             if not ten_year_json['chart']['result']:
                 raise ValueError("No 10-year treasury data retrieved")
@@ -205,7 +241,7 @@ class MarketData:
                 "ten_year_rate": round(ten_year_rate, 2),
                 "two_year_rate": round(two_year_rate, 2),
                 "yield_curve_spread": round(spread, 2),
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
             logger.info(f"Yield curve data processed: 10Y={ten_year_rate:.2f}, 2Y={two_year_rate:.2f}, spread={spread:.2f}")
@@ -215,16 +251,25 @@ class MarketData:
 
         except Exception as e:
             logger.error(f"Error fetching yield curve data: {e}")
-            # Return cached data if available and valid, otherwise return default data to prevent failure
+            # Return cached data if available and timestamp is valid (within 60 minutes)
             if cached_data and isinstance(cached_data, dict) and "ten_year_rate" in cached_data:
-                return cached_data
+                cached_ts = cached_data.get("timestamp")
+                if cached_ts:
+                    try:
+                        cached_time = datetime.fromisoformat(cached_ts.replace("Z", "+00:00"))
+                        age_seconds = (datetime.now(timezone.utc) - cached_time).total_seconds()
+                        if age_seconds < 3600:
+                            logger.info(f"Using cached yield curve data on error (age: {age_seconds:.0f}s)")
+                            return cached_data
+                    except (ValueError, TypeError):
+                        pass
             # Return default yield curve data to allow application to continue
             logger.warning("Returning default yield curve data due to fetch failure")
             return {
                 "ten_year_rate": 4.5,
                 "two_year_rate": 3.0,
                 "yield_curve_spread": 1.5,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
     async def get_market_overview(self) -> Dict[str, Any]:
@@ -239,7 +284,7 @@ class MarketData:
             return {
                 "vix": vix_data,
                 "yield_curve": yield_data,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
         except Exception as e:

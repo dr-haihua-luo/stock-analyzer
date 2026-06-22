@@ -8,7 +8,7 @@ from urllib3.util.retry import Retry
 from backend.config import settings
 from backend.cache.redis_client import redis_client
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,20 @@ class SectorData:
         """Get performance data for all major sectors."""
         cache_key = "sector_performance"
         cached_data = await self.cache.get(cache_key)
+        # Validate that cached data has valid timestamp within last 60 minutes
         if cached_data:
-            return cached_data
+            cached_ts = cached_data.get("timestamp")
+            if cached_ts:
+                try:
+                    cached_time = datetime.fromisoformat(cached_ts.replace("Z", "+00:00"))
+                    age_seconds = (datetime.now(timezone.utc) - cached_time).total_seconds()
+                    if age_seconds < 3600:  # Less than 60 minutes old
+                        logger.info(f"Returning cached sector performance data (age: {age_seconds:.0f}s)")
+                        return cached_data
+                    else:
+                        logger.info(f"Sector performance cache expired (age: {age_seconds:.0f}s > 3600s), fetching fresh data")
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Failed to parse cached sector timestamp: {e}")
 
         try:
             sector_data = {}
@@ -72,21 +84,31 @@ class SectorData:
                 reverse=True
             )
 
-            # Add rotation signals
+            # Add rotation signals and timestamp for cache validation
             sector_data["rotation_signals"] = {
                 "strongest": sorted_sectors[0][0] if sorted_sectors else None,
                 "weakest": sorted_sectors[-1][0] if sorted_sectors else None,
                 "ranking": [symbol for symbol, _ in sorted_sectors]
             }
+            sector_data["timestamp"] = datetime.now(timezone.utc).isoformat()
 
             await self.cache.set(cache_key, sector_data, expire=settings.SECTOR_DATA_TTL)
             return sector_data
 
         except Exception as e:
             logger.error(f"Error fetching sector performance: {e}")
-            # Return cached data if available, otherwise return default data to prevent failure
+            # Return cached data if available and timestamp is valid, otherwise return default data
             if cached_data:
-                return cached_data
+                cached_ts = cached_data.get("timestamp")
+                if cached_ts:
+                    try:
+                        cached_time = datetime.fromisoformat(cached_ts.replace("Z", "+00:00"))
+                        age_seconds = (datetime.now(timezone.utc) - cached_time).total_seconds()
+                        if age_seconds < 3600:
+                            logger.info(f"Using cached sector performance data on error (age: {age_seconds:.0f}s)")
+                            return cached_data
+                    except (ValueError, TypeError):
+                        pass
             # Return default sector data to allow application to continue
             logger.warning("Returning default sector data due to fetch failure")
             return {
@@ -126,7 +148,7 @@ class SectorData:
             response.raise_for_status()
             data_json = response.json()
 
-            logger.info(f"ETF {symbol} data received: {len(data_json.get('chart', {}).get('result', []))} {response.text}")
+            logger.info(f"ETF {symbol} data received length: {len(data_json.get('chart', {}).get('result', []))} {len(response.text)}")
 
             if not data_json['chart']['result']:
                 logger.warning(f"No data found for {symbol}")
@@ -171,7 +193,7 @@ class SectorData:
                 "current_price": round(current_price, 2),
                 "volume": int(indicators['volume'][-1]) if indicators['volume'] and indicators['volume'][-1] is not None else 0,
                 "market_cap": meta.get("marketCap", 0),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 **returns
             }
 
@@ -188,8 +210,20 @@ class SectorData:
         """Get detailed data for a specific sector ETF."""
         cache_key = f"sector_etf_{symbol}"
         cached_data = await self.cache.get(cache_key)
+        # Validate that cached data has valid timestamp within last 60 minutes
         if cached_data:
-            return cached_data
+            cached_ts = cached_data.get("timestamp")
+            if cached_ts:
+                try:
+                    cached_time = datetime.fromisoformat(cached_ts.replace("Z", "+00:00"))
+                    age_seconds = (datetime.now(timezone.utc) - cached_time).total_seconds()
+                    if age_seconds < 3600:  # Less than 60 minutes old
+                        logger.debug(f"Returning cached ETF {symbol} data (age: {age_seconds:.0f}s)")
+                        return cached_data
+                    else:
+                        logger.info(f"ETF {symbol} cache expired (age: {age_seconds:.0f}s > 3600s), fetching fresh data")
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Failed to parse cached ETF {symbol} timestamp: {e}")
 
         try:
             # Use direct Yahoo Finance API call with proper headers to avoid JSON decode errors
@@ -260,7 +294,7 @@ class SectorData:
                 "rsi": round(rsi, 2),
                 "pe_ratio": meta.get("trailingPE"),
                 "dividend_yield": meta.get("dividendYield"),
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
             await self.cache.set(cache_key, data, expire=settings.SECTOR_DATA_TTL)
@@ -268,9 +302,18 @@ class SectorData:
 
         except Exception as e:
             logger.error(f"Error fetching detailed ETF data for {symbol}: {e}")
-            # Return cached data if available, otherwise return default data to prevent failure
+            # Return cached data if available and timestamp is valid (within 60 minutes)
             if cached_data:
-                return cached_data
+                cached_ts = cached_data.get("timestamp")
+                if cached_ts:
+                    try:
+                        cached_time = datetime.fromisoformat(cached_ts.replace("Z", "+00:00"))
+                        age_seconds = (datetime.now(timezone.utc) - cached_time).total_seconds()
+                        if age_seconds < 3600:
+                            logger.info(f"Using cached ETF {symbol} data on error (age: {age_seconds:.0f}s)")
+                            return cached_data
+                    except (ValueError, TypeError):
+                        pass
             # Return default ETF data to allow application to continue
             logger.warning(f"Returning default data for {symbol} due to fetch failure")
             return {
@@ -282,7 +325,7 @@ class SectorData:
                 "rsi": 50.0,
                 "pe_ratio": None,
                 "dividend_yield": None,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
     async def get_sector_etf_data_by_sector(self, sector_name: str) -> Dict[str, Any]:
@@ -301,7 +344,7 @@ class SectorData:
                 "rsi": 50.0,
                 "pe_ratio": None,
                 "dividend_yield": None,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
         # Get data for the ETF symbol
