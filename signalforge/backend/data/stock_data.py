@@ -254,7 +254,7 @@ def fetch_news_sentiment(ticker: str) -> float:
         )
         news    = _news_client.get_news(request)
         articles = news.news if hasattr(news, "news") else []
-        # logger.info(f"Stock news {ticker} data received: {news.data}")
+        logger.info(f"Stock news {ticker} article received: {articles}")
  
         if not articles:
             return 0.0
@@ -262,6 +262,7 @@ def fetch_news_sentiment(ticker: str) -> float:
         scores = []
         for article in articles:
             headline = (article.headline or "").lower()
+            logger.info(f"Stock news {ticker} headline: {headline}")
             words    = set(headline.split())
             pos = len(words & POSITIVE_WORDS)
             neg = len(words & NEGATIVE_WORDS)

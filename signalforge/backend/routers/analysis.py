@@ -2,7 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.session import get_db, AsyncSessionLocal
 from backend.db.models import Signal
-from backend.signal.models import AnalysisRequest, AnalysisResponse, StockTwitsSentiment
+from backend.signal.models import (
+    AnalysisRequest,
+    AnalysisResponse,
+    StockTwitsSentiment,
+    FundamentalsDisplay,
+    FinvizSnapshot,
+    TipRanksSnapshot,
+)
 from backend.agents.graph import analysis_graph
 from backend.data.stocktwits_data import fetch_stocktwits_sentiment
 import logging
@@ -23,13 +30,16 @@ async def analyze_ticker(
     """
     try:
         logger.info(f"Received analysis request for {request.ticker}")
+        logger.info(f"Request skip_tipranks value: {request.skip_tipranks}")
 
         # Initialize state for the graph
         initial_state = {
             "ticker": request.ticker.upper(),
+            "skip_tipranks": request.skip_tipranks,
             "market_data": None,
             "sector_data": None,
             "stock_data": None,
+            "fundamentals": None,
             "analysis_result": None,
             "signal_output": None,
             "confidence_breakdown": None,
@@ -37,6 +47,7 @@ async def analyze_ticker(
             "timestamp": datetime.utcnow(),
             "retry_count": 0
         }
+        logger.info(f"Initial state skip_tipranks: {initial_state.get('skip_tipranks')}")
 
         # Run the analysis graph
         final_state = await analysis_graph.ainvoke(initial_state)
@@ -54,6 +65,54 @@ async def analyze_ticker(
         if not signal_output or not confidence_breakdown:
             logger.error(f"Missing signal output or confidence breakdown for {request.ticker}")
             raise HTTPException(status_code=500, detail="Analysis completed but results are incomplete")
+
+        # Build FundamentalsDisplay from state
+        raw_fund = final_state.get("fundamentals")
+        if raw_fund:
+            fv_snap = None
+            if raw_fund.finviz:
+                fv = raw_fund.finviz
+                fv_snap = FinvizSnapshot(
+                    pe_ratio=fv.pe_ratio,
+                    forward_pe=fv.forward_pe,
+                    peg_ratio=fv.peg_ratio,
+                    profit_margin_pct=fv.profit_margin_pct,
+                    roe_pct=fv.roe_pct,
+                    debt_to_equity=fv.debt_to_equity,
+                    insider_own_pct=fv.insider_own_pct,
+                    net_insider_sentiment=fv.net_insider_sentiment,
+                    insider_buys_90d=fv.insider_buys_90d,
+                    insider_sells_90d=fv.insider_sells_90d,
+                    eps_next_5y_pct=fv.eps_next_5y_pct,
+                    market_cap_billions=fv.market_cap_billions,
+                    beta=fv.beta,
+                    recent_analyst_actions=fv.recent_analyst_actions,
+                )
+            tr_snap = None
+            if raw_fund.tipranks:
+                tr = raw_fund.tipranks
+                tr_snap = TipRanksSnapshot(
+                    analyst_consensus=tr.analyst_consensus,
+                    price_target_mean=tr.price_target_mean,
+                    price_target_high=tr.price_target_high,
+                    price_target_low=tr.price_target_low,
+                    number_of_analysts=tr.number_of_analysts,
+                    buy_pct=tr.buy_pct,
+                    hold_pct=tr.hold_pct,
+                    sell_pct=tr.sell_pct,
+                    buy_count=tr.buy_count,
+                    hold_count=tr.hold_count,
+                    sell_count=tr.sell_count,
+                    smart_score=tr.smart_score,
+                    upside_to_target_pct=tr.upside_to_target_pct,
+                )
+            signal_output["fundamentals"] = FundamentalsDisplay(
+                ticker=request.ticker.upper(),
+                fundamental_score=raw_fund.fundamental_score,
+                score_components=raw_fund.score_components,
+                finviz=fv_snap,
+                tipranks=tr_snap,
+            ).model_dump()
 
         # Fetch StockTwits sentiment (non-blocking, informational only)
         sentiment_raw = await fetch_stocktwits_sentiment(request.ticker.upper())

@@ -5,7 +5,7 @@ export const useAnalysis = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const analyzeTicker = useCallback(async (ticker: string): Promise<AnalysisResponse> => {
+  const analyzeTicker = useCallback(async (ticker: string, skipTipranks: boolean = true): Promise<AnalysisResponse> => {
     setLoading(true);
     setError(null);
 
@@ -15,7 +15,10 @@ export const useAnalysis = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ticker: ticker.toUpperCase() }),
+        body: JSON.stringify({
+          ticker: ticker.toUpperCase(),
+          skip_tipranks: skipTipranks,
+        }),
       });
 
       if (!response.ok) {

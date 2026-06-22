@@ -7,9 +7,11 @@ from pydantic import BaseModel
 class AnalysisState(TypedDict):
     """State definition for the LangGraph analysis pipeline."""
     ticker: str
+    skip_tipranks: bool
     market_data: Optional[Dict[str, Any]]
     sector_data: Optional[Dict[str, Any]]
     stock_data: Optional[Dict[str, Any]]
+    fundamentals: Optional[Any]  # FundamentalsResult — for display only
     analysis_result: Optional[Dict[str, Any]]
     signal_output: Optional[Dict[str, Any]]
     confidence_breakdown: Optional[Dict[str, Any]]

@@ -14,12 +14,62 @@ export interface StockTwitsSentiment {
   disclaimer: string;
 }
 
+export interface FinvizSnapshot {
+  pe_ratio: number | null;
+  forward_pe: number | null;
+  peg_ratio: number | null;
+  profit_margin_pct: number | null;
+  roe_pct: number | null;
+  debt_to_equity: number | null;
+  insider_own_pct: number | null;
+  net_insider_sentiment: number | null;
+  insider_buys_90d: number | null;
+  insider_sells_90d: number | null;
+  eps_next_5y_pct: number | null;
+  market_cap_billions: number | null;
+  beta: number | null;
+  recent_analyst_actions: Array<{
+    date: string;
+    status: string;
+    firm: string;
+    target: string;
+  }>;
+  source: string;
+}
+
+export interface TipRanksSnapshot {
+  analyst_consensus: string | null;
+  price_target_mean: number | null;
+  price_target_high: number | null;
+  price_target_low: number | null;
+  number_of_analysts: number | null;
+  buy_pct: number | null;
+  hold_pct: number | null;
+  sell_pct: number | null;
+  buy_count: number | null;
+  hold_count: number | null;
+  sell_count: number | null;
+  smart_score: number | null;
+  upside_to_target_pct: number | null;
+  source: string;
+}
+
+export interface FundamentalsDisplay {
+  ticker: string;
+  fundamental_score: number;
+  score_components: Record<string, any>;
+  finviz: FinvizSnapshot | null;
+  tipranks: TipRanksSnapshot | null;
+  disclaimer: string;
+}
+
 export interface SignalOutput {
   ticker: string;
   signal: 'BUY' | 'HOLD' | 'SELL';
   confidence: number;
   timestamp: string;
   stocktwits_sentiment?: StockTwitsSentiment | null;
+  fundamentals?: FundamentalsDisplay | null;
 }
 
 export interface ConfidenceBreakdown {
@@ -38,4 +88,5 @@ export interface AnalysisResponse {
 export interface AnalysisRequest {
   ticker: string;
   force_refresh?: boolean;
+  skip_tipranks?: boolean;
 }

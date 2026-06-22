@@ -7,9 +7,9 @@ from backend.data.stock_data import (
     compute_52w_metrics,
     compute_technicals,
     compute_technical_score,
-    compute_fundamental_score,
     fetch_news_sentiment,
 )
+from backend.data.fundamentals_data import fetch_fundamentals, FundamentalsResult
 import logging
 from datetime import datetime
 
@@ -49,15 +49,20 @@ class StockAgent:
                 technicals, w52["pct_from_52w_high"]
             )
 
-            # 6. Fundamental proxy score (Alpaca has no P/E; documented as proxy)
-            fund_score = compute_fundamental_score(df, w52["pct_from_52w_high"])
+            # 6. Fetch real fundamentals from FinViz + TipRanks
+            # TipRanks can be skipped via state flag to preserve rate limit
+            skip_tipranks = state.get("skip_tipranks", True)
+            logger.info(f"StockAgent: skip_tipranks={skip_tipranks} for {ticker}")
+            fundamentals = await fetch_fundamentals(ticker, current_price, skip_tipranks=skip_tipranks)
 
             # 7. News sentiment via Alpaca NewsClient
             news_sentiment = fetch_news_sentiment(ticker)
 
             # 8. LLM narrative for stock conditions
             prompt = f"""
-            You are a technical analyst. Write exactly 2 sentences summarising the stock's technical setup. Be specific about the RSI and MACD.
+            You are a stock technical analyst. Write exactly 2 sentences summarising the stock's technical setup. 
+            Be specific about the RSI and MACD. Write exactly 1 sentence analysizing the fundamentals. 
+            Write exactly 1 sentence summarising the News sentiment.
 
             Ticker: {ticker} | Price: ${current_price:.2f} |
             RSI(14): {technicals['rsi_14']} |
@@ -65,16 +70,23 @@ class StockAgent:
             BB: {technicals['bb_position']} |
             Volume trend: {technicals['volume_trend']} |
             % from 52w high: {w52['pct_from_52w_high']:.1f}% |
+            fundamentals: {fundamentals} |
             News sentiment: {news_sentiment:+.2f}
+
+            Do not repeat or rephrase the above message in your response.  Just provide your answers
             """
             logger.info(f"Stock agent prompt {ticker}: {prompt}")
 
             llm_response = await llm_client.generate_structured_completion(
                 prompt=prompt,
-                max_tokens=150
+                max_tokens=500
             )
 
             narrative = llm_response.strip()
+            logger.info(f"LLM response = {narrative}")
+
+            # Use real fundamental score from FinViz/TipRanks, fallback to 0.0
+            fund_score = fundamentals.fundamental_score if fundamentals else 0.0
 
             # Create stock data object (matching StockContext structure)
             stock_data = {
@@ -102,6 +114,7 @@ class StockAgent:
             result = {
                 "stock_data": stock_data,
                 "analysis": analysis,
+                "fundamentals": fundamentals,
                 "timestamp": datetime.utcnow().isoformat(),
             }
 

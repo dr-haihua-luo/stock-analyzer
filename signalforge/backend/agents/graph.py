@@ -157,6 +157,7 @@ async def stock_analysis_node(state: AnalysisState) -> AnalysisState:
         # Safely extract data from stock_result
         stock_data = stock_result.get("stock_data")
         analysis = stock_result.get("analysis")
+        fundamentals = stock_result.get("fundamentals")
 
         # Ensure extracted data is in expected format
         if stock_data is not None and not isinstance(stock_data, dict):
@@ -180,6 +181,9 @@ async def stock_analysis_node(state: AnalysisState) -> AnalysisState:
         else:
             # Still update analysis_result with empty stock analysis to avoid KeyError later
             state["analysis_result"] = {**current_analysis_result, "stock": {}}
+
+        # Update fundamentals in state (dataclass, not dict)
+        state["fundamentals"] = fundamentals
 
         return state
     except Exception as e:

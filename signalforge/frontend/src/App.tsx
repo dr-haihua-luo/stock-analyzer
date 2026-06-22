@@ -6,6 +6,7 @@ import MarketOverview from './components/MarketOverview';
 import SectorHeatmap from './components/SectorHeatmap';
 import StockChart from './components/StockChart';
 import ConfidenceBreakdown from './components/ConfidenceBreakdown';
+import FundamentalPanel from './components/FundamentalPanel';
 import SentimentPanel from './components/SentimentPanel';
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [skipTipranks, setSkipTipranks] = useState(true); // Default: skip TipRanks to preserve rate limit
 
   const { analyzeTicker } = useAnalysis();
   const { wsConnected, sendMessage } = useWebSocket(ticker);
@@ -21,7 +23,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const result = await analyzeTicker(ticker.toUpperCase());
+      const result = await analyzeTicker(ticker.toUpperCase(), skipTipranks);
       setAnalysisResult(result);
     } catch (err: any) {
       setError(err.message || 'Analysis failed');
@@ -51,21 +53,41 @@ function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Search Bar */}
         <div className="mb-6">
-          <div className="flex max-w-xl">
-            <input
-              type="text"
-              value={ticker}
-              onChange={(e) => setTicker(e.target.value.toUpperCase())}
-              placeholder="Enter stock ticker (e.g., AAPL, MSFT, GOOGL)"
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={handleAnalyze}
-              disabled={loading}
-              className="px-6 py-2 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? 'Analyzing...' : 'Analyze'}
-            </button>
+          <div className="flex flex-col max-w-xl">
+            <div className="flex">
+              <input
+                type="text"
+                value={ticker}
+                onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                placeholder="Enter stock ticker (e.g., AAPL, MSFT, GOOGL)"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleAnalyze}
+                disabled={loading}
+                className="px-6 py-2 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? 'Analyzing...' : 'Analyze'}
+              </button>
+            </div>
+            {/* TipRanks Toggle */}
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                onClick={() => setSkipTipranks(!skipTipranks)}
+                className={`px-3 py-1 text-xs font-medium rounded border transition-colors ${
+                  skipTipranks
+                    ? 'bg-gray-700 text-gray-300 border-gray-600 hover:bg-gray-600'
+                    : 'bg-green-900/30 text-green-400 border-green-600 hover:bg-green-900/40'
+                }`}
+              >
+                {skipTipranks ? 'TipRanks: OFF' : 'TipRanks: ON'}
+              </button>
+              <span className="text-xs text-gray-500">
+                {skipTipranks
+                  ? 'Free tier protected — FinViz only'
+                  : 'Full analysis — TipRanks enabled'}
+              </span>
+            </div>
           </div>
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         </div>
@@ -77,6 +99,13 @@ function App() {
 
             {/* Confidence Breakdown */}
             <ConfidenceBreakdown breakdown={analysisResult.confidence_breakdown} />
+
+            {/* Fundamental Analysis Panel */}
+            <FundamentalPanel
+              fundamentals={analysisResult.signal?.fundamentals}
+              ticker={ticker}
+              loading={loading}
+            />
 
             {/* Analysis Details Tabs */}
             <div className="mt-8">
@@ -105,7 +134,7 @@ function App() {
 
             {/* Example Stock Chart */}
             <div className="mt-8">
-              <h2 className="text-xl font-semibold mb-4">Example: AAPL Chart</h2>
+              <h2 className="text-xl font-semibold mb-4 text-gray-800">Example: AAPL Chart</h2>
               <StockChart ticker="AAPL" />
             </div>
           </>
@@ -115,9 +144,9 @@ function App() {
       {/* Raw Data Display (for debugging) */}
       {analysisResult && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 mt-12 bg-gray-50">
-          <h2 className="text-xl font-bold mb-4">Raw Analysis Data (for debugging)</h2>
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <pre className="text-xs text-gray-600 whitespace-pre-wrap">{JSON.stringify(analysisResult, null, 2)}</pre>
+          <h2 className="text-xl font-bold mb-4 text-gray-900">Raw Analysis Data (for debugging)</h2>
+          <div className="bg-white rounded-lg shadow-md p-6 overflow-x-auto">
+            <pre className="text-xs text-gray-600 break-words whitespace-pre-wrap max-w-full">{JSON.stringify(analysisResult, null, 2)}</pre>
           </div>
         </div>
       )}
