@@ -70,13 +70,16 @@ export interface SignalOutput {
   timestamp: string;
   stocktwits_sentiment?: StockTwitsSentiment | null;
   fundamentals?: FundamentalsDisplay | null;
+  market_narrative?: string | null;
+  sector_narrative?: string | null;
+  stock_narrative?: string | null;
 }
 
 export interface ConfidenceBreakdown {
-  market_factor: number;
-  sector_factor: number;
-  stock_factor: number;
-  total_confidence: number;
+  market_contribution: number;
+  sector_contribution: number;
+  technical_contribution: number;
+  fundamental_contribution: number;
 }
 
 export interface AnalysisResponse {

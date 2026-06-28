@@ -152,7 +152,19 @@ class SectorData:
 
             if not data_json['chart']['result']:
                 logger.warning(f"No data found for {symbol}")
-                return None
+                # Return default data to allow application to continue
+                return {
+                    "symbol": symbol,
+                    "name": self.sector_etfs.get(symbol, symbol),
+                    "current_price": 0.0,
+                    "volume": 0,
+                    "market_cap": 0,
+                    "1d_return": 0.0,
+                    "1w_return": 0.0,
+                    "1m_return": 0.0,
+                    "3m_return": 0.0,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
 
             result = data_json['chart']['result'][0]
             meta = result['meta']
@@ -161,13 +173,37 @@ class SectorData:
 
             if not timestamps or not indicators['close']:
                 logger.warning(f"No price data available for {symbol}")
-                return None
+                # Return default data to allow application to continue
+                return {
+                    "symbol": symbol,
+                    "name": self.sector_etfs.get(symbol, symbol),
+                    "current_price": 0.0,
+                    "volume": 0,
+                    "market_cap": 0,
+                    "1d_return": 0.0,
+                    "1w_return": 0.0,
+                    "1m_return": 0.0,
+                    "3m_return": 0.0,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
 
             # Get close prices (filter out None values)
             close_prices = [price for price in indicators['close'] if price is not None]
             if not close_prices:
                 logger.warning(f"No valid close prices for {symbol}")
-                return None
+                # Return default data to allow application to continue
+                return {
+                    "symbol": symbol,
+                    "name": self.sector_etfs.get(symbol, symbol),
+                    "current_price": 0.0,
+                    "volume": 0,
+                    "market_cap": 0,
+                    "1d_return": 0.0,
+                    "1w_return": 0.0,
+                    "1m_return": 0.0,
+                    "3m_return": 0.0,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
 
             current_price = close_prices[-1]
 
@@ -203,8 +239,19 @@ class SectorData:
 
         except Exception as e:
             logger.error(f"Error fetching ETF data for {symbol}: {e}")
-            # Return None to allow graceful handling in calling function
-            return None
+            # Return default ETF data to allow application to continue
+            logger.warning(f"Returning default ETF data for {symbol} due to fetch failure")
+            return {
+                "symbol": symbol,
+                "name": self.sector_etfs.get(symbol, symbol),
+                "current_price": 0.0,
+                "sma_20": 0.0,
+                "sma_50": 0.0,
+                "rsi": 50.0,
+                "pe_ratio": None,
+                "dividend_yield": None,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
 
     async def get_sector_etf_data(self, symbol: str) -> Dict[str, Any]:
         """Get detailed data for a specific sector ETF."""
@@ -315,7 +362,7 @@ class SectorData:
                     except (ValueError, TypeError):
                         pass
             # Return default ETF data to allow application to continue
-            logger.warning(f"Returning default data for {symbol} due to fetch failure")
+            logger.warning(f"Returning default ETF data for {symbol} due to fetch failure")
             return {
                 "symbol": symbol,
                 "name": self.sector_etfs.get(symbol, symbol),

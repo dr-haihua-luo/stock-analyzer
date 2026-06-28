@@ -29,36 +29,7 @@ export const getSignalHistory = async (limit: number = 100) => {
   return response.json();
 };
 
-// WebSocket utility functions
-export const createAnalysisWebSocket = (ticker: string, onMessage: (data: any) => void) => {
-  const ws = new WebSocket(`${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}/ws/analysis/${ticker.toUpperCase()}`);
-
-  ws.onopen = () => {
-    console.log(`WebSocket connected for ${ticker}`);
-  };
-
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      onMessage(data);
-    } catch (error) {
-      console.error('Error parsing WebSocket message:', error);
-    }
-  };
-
-  ws.onclose = () => {
-    console.log(`WebSocket disconnected for ${ticker}`);
-  };
-
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
-  };
-
-  return ws;
-};
-
 export default {
   analyzeTicker,
   getSignalHistory,
-  createAnalysisWebSocket
 };

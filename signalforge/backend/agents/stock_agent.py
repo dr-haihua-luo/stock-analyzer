@@ -56,7 +56,7 @@ class StockAgent:
             fundamentals = await fetch_fundamentals(ticker, current_price, skip_tipranks=skip_tipranks)
 
             # 7. News sentiment via Alpaca NewsClient
-            news_sentiment = fetch_news_sentiment(ticker)
+            news_sentiment, news_summary = fetch_news_sentiment(ticker)
 
             # 8. LLM narrative for stock conditions
             prompt = f"""
@@ -109,13 +109,16 @@ class StockAgent:
                 "technical_score": tech_score,
                 "fundamental_score": fund_score,
                 "news_sentiment": news_sentiment,
+                "news_summary": news_summary,
             }
 
+            # Build LLM narrative for the reasoning field (stock agent already has narrative)
             result = {
                 "stock_data": stock_data,
                 "analysis": analysis,
                 "fundamentals": fundamentals,
                 "timestamp": datetime.utcnow().isoformat(),
+                "reasoning": [f"[stock] {narrative}"],
             }
 
             logger.info(f"Stock analysis completed for {ticker}")

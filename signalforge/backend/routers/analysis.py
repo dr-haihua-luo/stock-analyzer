@@ -43,6 +43,7 @@ async def analyze_ticker(
             "analysis_result": None,
             "signal_output": None,
             "confidence_breakdown": None,
+            "reasoning": [],
             "error": None,
             "timestamp": datetime.utcnow(),
             "retry_count": 0
@@ -65,6 +66,24 @@ async def analyze_ticker(
         if not signal_output or not confidence_breakdown:
             logger.error(f"Missing signal output or confidence breakdown for {request.ticker}")
             raise HTTPException(status_code=500, detail="Analysis completed but results are incomplete")
+
+        # Extract narratives from reasoning field
+        def _extract_narrative(reasoning: list, prefix: str) -> str | None:
+            """
+            Find the first reasoning entry that starts with [prefix]
+            and return the text after the prefix tag.
+            e.g. "[market] VIX at 18.5..." -> "VIX at 18.5..."
+            """
+            tag = f"[{prefix}]"
+            for entry in reasoning:
+                if isinstance(entry, str) and entry.startswith(tag):
+                    return entry[len(tag):].strip()
+            return None
+
+        reasoning = final_state.get("reasoning", [])
+        signal_output["market_narrative"] = _extract_narrative(reasoning, "market")
+        signal_output["sector_narrative"] = _extract_narrative(reasoning, "sector")
+        signal_output["stock_narrative"] = _extract_narrative(reasoning, "stock")
 
         # Build FundamentalsDisplay from state
         raw_fund = final_state.get("fundamentals")

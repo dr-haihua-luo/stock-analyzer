@@ -226,11 +226,12 @@ def compute_technical_score(technicals: dict, price_vs_52w_high: float) -> float
 # ---------------------------------------------------------------------------
 # News sentiment via Alpaca NewsClient
 # ---------------------------------------------------------------------------
-def fetch_news_sentiment(ticker: str) -> float:
+def fetch_news_sentiment(ticker: str) -> tuple:
     """
     Fetches last 30 days of news headlines for the ticker via Alpaca NewsClient.
     Computes a simple keyword-based sentiment score in range -1.0 to +1.0.
-    Returns 0.0 on any error (non-fatal — sentiment is supplementary).
+    Returns (sentiment, news_summary) tuple on success.
+    Returns (0.0, []) on any error (non-fatal — sentiment is supplementary).
     """
     POSITIVE_WORDS = {
         "beat", "beats", "surge", "surges", "record", "profit", "upgrade",
@@ -244,35 +245,37 @@ def fetch_news_sentiment(ticker: str) -> float:
     }
 
     try:
-        start = datetime.now(timezone.utc) - timedelta(days=30)
+        start = datetime.now(timezone.utc) - timedelta(days=10)
         request = NewsRequest(
             symbols=ticker,
             start=start,
-            limit=50,
+            limit=15,
             include_content=False,
             exclude_contentless=True,
         )
         news    = _news_client.get_news(request)
-        articles = news.news if hasattr(news, "news") else []
-        logger.info(f"Stock news {ticker} article received: {articles}")
+        articles = news.data["news"] if hasattr(news, "data") else []
+        logger.info(f"Stock news {ticker} article received: {len(articles)}")
  
         if not articles:
-            return 0.0
+            return 0.0, []
 
         scores = []
+        news_summary = []
         for article in articles:
-            headline = (article.headline or "").lower()
-            logger.info(f"Stock news {ticker} headline: {headline}")
-            words    = set(headline.split())
+            text  = getattr(article, "summary",  "").lower()
+            logger.info(f"Stock news for {ticker}: {text}")
+            news_summary.append({ "summary": getattr(article, "summary", "")})
+            words = set(text.split())
             pos = len(words & POSITIVE_WORDS)
             neg = len(words & NEGATIVE_WORDS)
             if pos + neg > 0:
                 scores.append((pos - neg) / (pos + neg))
 
-        return round(float(np.mean(scores)), 4) if scores else 0.0
+        return round(float(np.mean(scores)), 4) if scores else 0.0, news_summary
 
     except Exception:
-        return 0.0  # sentiment is best-effort; never block the pipeline
+        return 0.0, []  # sentiment is best-effort; never block the pipeline
 
 
 # ---------------------------------------------------------------------------

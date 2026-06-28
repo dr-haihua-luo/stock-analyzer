@@ -215,7 +215,7 @@ export default function FundamentalPanel({ fundamentals, ticker, loading }: Prop
               </h3>
               <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
                 {fv.insider_own_pct != null && (
-                  <span>
+                  <span className="text-white grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                     Insider ownership:{" "}
                     <span className="text-white font-semibold">{fv.insider_own_pct.toFixed(1)}%</span>
                   </span>

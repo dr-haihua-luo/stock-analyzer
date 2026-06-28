@@ -43,6 +43,7 @@ async def market_analysis_node(state: AnalysisState) -> AnalysisState:
         # Safely extract data from market_result
         market_data = market_result.get("market_data")
         analysis = market_result.get("analysis")
+        market_reasoning = market_result.get("reasoning", [])
 
         # Ensure extracted data is in expected format
         if market_data is not None and not isinstance(market_data, dict):
@@ -66,6 +67,12 @@ async def market_analysis_node(state: AnalysisState) -> AnalysisState:
         else:
             # Still update analysis_result with empty market analysis to avoid KeyError later
             state["analysis_result"] = {**current_analysis_result, "market": {}}
+
+        # Accumulate reasoning entries
+        current_reasoning = state.get("reasoning", [])
+        if not isinstance(current_reasoning, list):
+            current_reasoning = []
+        state["reasoning"] = current_reasoning + market_reasoning if isinstance(market_reasoning, list) else current_reasoning
 
         return state
     except Exception as e:
@@ -100,6 +107,7 @@ async def sector_analysis_node(state: AnalysisState) -> AnalysisState:
         # Safely extract data from sector_result
         sector_data = sector_result.get("sector_data")
         analysis = sector_result.get("analysis")
+        sector_reasoning = sector_result.get("reasoning", [])
 
         # Ensure extracted data is in expected format
         if sector_data is not None and not isinstance(sector_data, dict):
@@ -123,6 +131,12 @@ async def sector_analysis_node(state: AnalysisState) -> AnalysisState:
         else:
             # Still update analysis_result with empty sector analysis to avoid KeyError later
             state["analysis_result"] = {**current_analysis_result, "sector": {}}
+
+        # Accumulate reasoning entries
+        current_reasoning = state.get("reasoning", [])
+        if not isinstance(current_reasoning, list):
+            current_reasoning = []
+        state["reasoning"] = current_reasoning + sector_reasoning if isinstance(sector_reasoning, list) else current_reasoning
 
         return state
     except Exception as e:
@@ -158,6 +172,7 @@ async def stock_analysis_node(state: AnalysisState) -> AnalysisState:
         stock_data = stock_result.get("stock_data")
         analysis = stock_result.get("analysis")
         fundamentals = stock_result.get("fundamentals")
+        stock_reasoning = stock_result.get("reasoning", [])
 
         # Ensure extracted data is in expected format
         if stock_data is not None and not isinstance(stock_data, dict):
@@ -184,6 +199,12 @@ async def stock_analysis_node(state: AnalysisState) -> AnalysisState:
 
         # Update fundamentals in state (dataclass, not dict)
         state["fundamentals"] = fundamentals
+
+        # Accumulate reasoning entries
+        current_reasoning = state.get("reasoning", [])
+        if not isinstance(current_reasoning, list):
+            current_reasoning = []
+        state["reasoning"] = current_reasoning + stock_reasoning if isinstance(stock_reasoning, list) else current_reasoning
 
         return state
     except Exception as e:

@@ -82,14 +82,17 @@ class SignalOutput(BaseModel):
     timestamp: datetime = Field(description="Analysis timestamp")
     stocktwits_sentiment: Optional[StockTwitsSentiment] = None
     fundamentals: Optional[FundamentalsDisplay] = None
+    market_narrative: Optional[str] = None
+    sector_narrative: Optional[str] = None
+    stock_narrative: Optional[str] = None
 
 
 class ConfidenceBreakdown(BaseModel):
     """Breakdown of confidence factors contributing to the final signal."""
-    market_factor: float = Field(description="Contribution from market analysis (0.0-1.0)")
-    sector_factor: float = Field(description="Contribution from sector analysis (0.0-1.0)")
-    stock_factor: float = Field(description="Contribution from stock analysis (0.0-1.0)")
-    total_confidence: float = Field(description="Weighted total confidence (0.0-1.0)")
+    market_contribution: float = Field(default=0.0, description="Contribution from market analysis (-1 to +1)")
+    sector_contribution: float = Field(default=0.0, description="Contribution from sector analysis (-1 to +1)")
+    technical_contribution: float = Field(default=0.0, description="Contribution from technical analysis (-1 to +1)")
+    fundamental_contribution: float = Field(default=0.0, description="Contribution from fundamental analysis (-1 to +1)")
 
 
 class AnalysisRequest(BaseModel):

@@ -126,12 +126,20 @@ class SignalEngine:
             # Ensure confidence is in valid range
             total_confidence = max(0.0, min(1.0, total_confidence))
 
-            # Create confidence breakdown
+            # Create confidence breakdown with signed contributions
+            # Stock factor splits between technical and fundamental (each gets 50% of stock weight)
+            # Technical and fundamental both come from stock analysis
+            technical_conf = stock_confidence * 0.5
+            fundamental_conf = stock_confidence * 0.5
+            # Market and sector contributions are signed scores
+            market_contrib = market_score  # Already signed (-1 to +1)
+            sector_contrib = sector_score  # Already signed (-1 to +1)
+
             confidence_breakdown = ConfidenceBreakdown(
-                market_factor=market_confidence,
-                sector_factor=sector_confidence,
-                stock_factor=stock_confidence,
-                total_confidence=total_confidence
+                market_contribution=market_contrib,
+                sector_contribution=sector_contrib,
+                technical_contribution=technical_conf,
+                fundamental_contribution=fundamental_conf,
             )
 
             # Create signal output
@@ -160,10 +168,10 @@ class SignalEngine:
                 timestamp=datetime.utcnow()
             )
             neutral_breakdown = ConfidenceBreakdown(
-                market_factor=0.5,
-                sector_factor=0.5,
-                stock_factor=0.5,
-                total_confidence=0.5
+                market_contribution=0.0,
+                sector_contribution=0.0,
+                technical_contribution=0.5,
+                fundamental_contribution=0.5,
             )
             return {
                 "signal_output": neutral_signal.model_dump(),

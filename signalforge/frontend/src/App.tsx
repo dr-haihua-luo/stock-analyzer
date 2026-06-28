@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useAnalysis } from './hooks/useAnalysis';
-import { useWebSocket } from './hooks/useWebSocket';
 import SignalCard from './components/SignalCard';
 import MarketOverview from './components/MarketOverview';
 import SectorHeatmap from './components/SectorHeatmap';
@@ -17,7 +16,6 @@ function App() {
   const [skipTipranks, setSkipTipranks] = useState(true); // Default: skip TipRanks to preserve rate limit
 
   const { analyzeTicker } = useAnalysis();
-  const { wsConnected, sendMessage } = useWebSocket(ticker);
 
   const handleAnalyze = async () => {
     setLoading(true);
@@ -98,7 +96,12 @@ function App() {
             <SignalCard signal={analysisResult.signal} />
 
             {/* Confidence Breakdown */}
-            <ConfidenceBreakdown breakdown={analysisResult.confidence_breakdown} />
+            <ConfidenceBreakdown
+              breakdown={analysisResult.confidence_breakdown}
+              market_narrative={analysisResult.signal?.market_narrative}
+              sector_narrative={analysisResult.signal?.sector_narrative}
+              stock_narrative={analysisResult.signal?.stock_narrative}
+            />
 
             {/* Fundamental Analysis Panel */}
             <FundamentalPanel
