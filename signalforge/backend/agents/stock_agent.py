@@ -58,22 +58,44 @@ class StockAgent:
             # 7. News sentiment via Alpaca NewsClient
             news_sentiment, news_summary = fetch_news_sentiment(ticker)
 
+            # Extract clean scalars from FundamentalsResult for the prompt.
+            # Use safe fallbacks so missing data shows as "N/A" not crashes.
+            fv = fundamentals.finviz if fundamentals and fundamentals.finviz else None
+            pe_str          = f"{fv.pe_ratio:.1f}" if fv and fv.pe_ratio else "N/A"
+            fwd_pe_str      = f"{fv.forward_pe:.1f}" if fv and fv.forward_pe else "N/A"
+            profit_margin   = f"{fv.profit_margin_pct:.1f}%" if fv and fv.profit_margin_pct else "N/A"
+            roe_str         = f"{fv.roe_pct:.1f}%" if fv and fv.roe_pct else "N/A"
+            eps_growth      = f"{fv.eps_next_5y_pct:.1f}%" if fv and fv.eps_next_5y_pct  else "N/A"
+            insider_str     = (
+                                f"{fv.net_insider_sentiment:+.0%} net ({fv.insider_buys_90d}B/{fv.insider_sells_90d}S)"
+                                    if fv and fv.net_insider_sentiment is not None else "N/A"
+                            )
+
+            fund_score_str = f"{fundamentals.fundamental_score:+.3f}" if fundamentals else "N/A"
+
             # 8. LLM narrative for stock conditions
             prompt = f"""
-            You are a stock technical analyst. Write exactly 2 sentences summarising the stock's technical setup. 
-            Be specific about the RSI and MACD. Write exactly 1 sentence analysizing the fundamentals. 
-            Write exactly 1 sentence summarising the News sentiment.
+            You are a concise equity analyst. Respond using ONLY this exact template 
+            — no intro, no outro, no repetition of input data:
 
-            Ticker: {ticker} | Price: ${current_price:.2f} |
-            RSI(14): {technicals['rsi_14']} |
-            MACD: {technicals['macd_signal']} |
-            BB: {technicals['bb_position']} |
-            Volume trend: {technicals['volume_trend']} |
-            % from 52w high: {w52['pct_from_52w_high']:.1f}% |
-            fundamentals: {fundamentals} |
-            News sentiment: {news_sentiment:+.2f}
+            TECHNICAL: <one sentence on RSI and MACD momentum direction>
+            SETUP: <one sentence on Bollinger Band position and volume trend>
+            FUNDAMENTALS: <one sentence on valuation and profitability>
+            ANALYST VIEW: <one sentence on Wall Street consensus and price target>
+            SENTIMENT: <one sentence on insider activity and news tone>
 
-            Do not repeat or rephrase the above message in your response.  Just provide your answers
+            Ticker: {ticker}  Price: ${current_price:.2f}  
+            52w-high: {w52['pct_from_52w_high']:+.1f}%\n
+            RSI(14): {technicals['rsi_14']:.1f}  
+            MACD: {technicals['macd_signal']}  
+            BB: {technicals['bb_position']}  
+            Volume: {technicals['volume_trend']}\n
+            P/E: {pe_str}  Fwd P/E: {fwd_pe_str}  
+            Profit margin: {profit_margin}  ROE: {roe_str}  
+            EPS growth 5Y: {eps_growth}\n
+            Insider 90d: {insider_str}  
+            News sentiment: {news_sentiment:+.2f}  
+            Fundamental score: {fund_score_str}
             """
             logger.info(f"Stock agent prompt {ticker}: {prompt}")
 
