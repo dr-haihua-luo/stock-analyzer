@@ -109,7 +109,7 @@ async def _fetch_html(ticker: str) -> Optional[str]:
     Fetch raw FinViz quote page HTML using curl_cffi with Chrome impersonation.
     Returns raw HTML string, or None on error.
     """
-    url    = f"{FINVIZ_BASE}?t={ticker.upper()}&p=d"
+    url    = f"{FINVIZ_BASE}?t={ticker.upper()}"
     try:
         async with AsyncSession(impersonate=BROWSER, timeout=TIMEOUT) as session:
             resp = await session.get(url, headers=HEADERS)
@@ -231,20 +231,63 @@ def _parse_fundamentals_table(soup: BeautifulSoup) -> dict:
     alternating with <td class="snapshot-td2"> (value).
     """
     result = {}
-    table = soup.find("table", class_="snapshot-table2")
-    if table is None:
-        # Try alternate class name used in newer FinViz layouts
-        table = soup.find("table", {"class": re.compile(r"snapshot")})
-    if table is None:
+    # Collect ALL td cells across ALL matching snapshot tables.
+    # FinViz splits fundamentals across multiple tables that share
+    # the same class — finding only the first table misses P/E and
+    # other ratios that live in the second or third table.
+    all_cells = []
+    candidates = soup.find_all(
+        "table",
+        class_=lambda c: c and (
+            "snapshot-table2" in c or "js-snapshot-table" in c
+        )
+    )
+    if not candidates:
+        # Fallback: any table with "snapshot" in any class
+        candidates = soup.find_all(
+            "table", {"class": re.compile(r"snapshot", re.I)}
+        )
+
+    for t in candidates:
+        all_cells.extend(t.find_all("td"))
+
+    if not all_cells:
         return result
 
-    cells = table.find_all("td")
-    # Cells alternate: label, value, label, value ...
-    for i in range(0, len(cells) - 1, 2):
-        label = cells[i].get_text(strip=True)
-        value = cells[i + 1].get_text(strip=True)
-        if label:
+    # Cells alternate label / value across the combined cell list.
+    # Known label set guards against misaligned pairs — if a cell
+    # text is not a known label it is treated as a stray value
+    # and skipped, keeping the label/value pairing correct.
+    KNOWN_LABELS = {
+        "Index", "Market Cap", "Enterprise Value", "Income", "Sales",
+        "Book/sh", "Cash/sh", "Dividend Est.", "Dividend TTM",
+        "Dividend Ex-Date", "Dividend Gr. 3/5Y", "Payout", "Employees",
+        "IPO", "P/E", "Forward P/E", "PEG", "P/S", "P/B", "P/C",
+        "P/FCF", "EPS (ttm)", "EPS next Y", "EPS next Q", "EPS this Y",
+        "EPS next 5Y", "EPS past 5Y", "Sales past 5Y", "Sales Q/Q",
+        "EPS Q/Q", "Earnings", "Gross Margin", "Oper. Margin",
+        "Profit Margin", "ROA", "ROE", "ROI", "Debt/Eq", "LT Debt/Eq",
+        "Current Ratio", "Quick Ratio", "Insider Own", "Insider Trans",
+        "Inst Own", "Inst Trans", "Short Float", "Short Ratio",
+        "Short Interest", "52W High", "52W Low", "RSI (14)", "Beta",
+        "ATR (14)", "SMA20", "SMA50", "SMA200", "Volume", "Avg Volume",
+        "Rel Volume", "Prev Close", "Price", "Change", "Perf Week",
+        "Perf Month", "Perf Quarter", "Perf Half Y", "Perf Year",
+        "Perf YTD", "Volatility", "Recom", "Target Price",
+        "52W Range", "Optionable", "Shortable",
+    }
+
+    i = 0
+    while i < len(all_cells) - 1:
+        label = all_cells[i].get_text(strip=True)
+        value = all_cells[i + 1].get_text(strip=True)
+        if label in KNOWN_LABELS:
             result[label] = value
+            i += 2
+            logger.info("fundamental %s = %s", label, value)
+        else:
+            # Not a known label — skip one cell to re-sync pairing
+            i += 1
 
     return result
 

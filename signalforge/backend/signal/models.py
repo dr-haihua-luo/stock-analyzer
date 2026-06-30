@@ -85,6 +85,7 @@ class SignalOutput(BaseModel):
     market_narrative: Optional[str] = None
     sector_narrative: Optional[str] = None
     stock_narrative: Optional[str] = None
+    news_sentiment_narrative: Optional[str] = None
 
 
 class ConfidenceBreakdown(BaseModel):

@@ -135,10 +135,12 @@ class StockAgent:
             }
 
             # Build LLM narrative for the reasoning field (stock agent already has narrative)
+            # Store news_articles in state for news_sentiment_agent to consume
             result = {
                 "stock_data": stock_data,
                 "analysis": analysis,
                 "fundamentals": fundamentals,
+                "news_articles": news_summary,  # raw news summaries for news_sentiment_agent
                 "timestamp": datetime.utcnow().isoformat(),
                 "reasoning": [f"[stock] {narrative}"],
             }

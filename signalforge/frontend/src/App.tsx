@@ -7,6 +7,7 @@ import StockChart from './components/StockChart';
 import ConfidenceBreakdown from './components/ConfidenceBreakdown';
 import FundamentalPanel from './components/FundamentalPanel';
 import SentimentPanel from './components/SentimentPanel';
+import NewsSentimentPanel from './components/NewsSentimentPanel';
 
 function App() {
   const [ticker, setTicker] = useState('AAPL');
@@ -123,6 +124,13 @@ function App() {
             {/* StockTwits Sentiment Panel - Full width at bottom */}
             <SentimentPanel
               sentiment={analysisResult.signal?.stocktwits_sentiment}
+              ticker={ticker}
+              loading={loading}
+            />
+
+            {/* News & Sentiment Analysis Panel */}
+            <NewsSentimentPanel
+              narrative={analysisResult.signal?.news_sentiment_narrative}
               ticker={ticker}
               loading={loading}
             />

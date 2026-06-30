@@ -73,6 +73,7 @@ export interface SignalOutput {
   market_narrative?: string | null;
   sector_narrative?: string | null;
   stock_narrative?: string | null;
+  news_sentiment_narrative?: string | null;
 }
 
 export interface ConfidenceBreakdown {

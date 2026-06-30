@@ -4,6 +4,7 @@ from backend.agents.state import AnalysisState
 from backend.agents.market_agent import MarketAgent
 from backend.agents.sector_agent import SectorAgent
 from backend.agents.stock_agent import StockAgent
+from backend.agents.news_sentiment_agent import news_sentiment_node
 from backend.signal.engine import SignalEngine
 import logging
 
@@ -200,6 +201,11 @@ async def stock_analysis_node(state: AnalysisState) -> AnalysisState:
         # Update fundamentals in state (dataclass, not dict)
         state["fundamentals"] = fundamentals
 
+        # Pass through news_articles for news_sentiment_node
+        stock_news_articles = stock_result.get("news_articles")
+        if stock_news_articles is not None:
+            state["news_articles"] = stock_news_articles
+
         # Accumulate reasoning entries
         current_reasoning = state.get("reasoning", [])
         if not isinstance(current_reasoning, list):
@@ -287,6 +293,7 @@ def create_analysis_graph() -> StateGraph:
     workflow.add_node("market_analysis", market_analysis_node)
     workflow.add_node("sector_analysis", sector_analysis_node)
     workflow.add_node("stock_analysis", stock_analysis_node)
+    workflow.add_node("news_sentiment", news_sentiment_node)
     workflow.add_node("signal_generation", signal_generation_node)
 
     # Set entry point
@@ -295,7 +302,8 @@ def create_analysis_graph() -> StateGraph:
     # Add edges
     workflow.add_edge("market_analysis", "sector_analysis")
     workflow.add_edge("sector_analysis", "stock_analysis")
-    workflow.add_edge("stock_analysis", "signal_generation")
+    workflow.add_edge("stock_analysis", "news_sentiment")
+    workflow.add_edge("news_sentiment", "signal_generation")
     workflow.add_edge("signal_generation", END)
 
     # Add conditional edges for error handling
@@ -317,6 +325,14 @@ def create_analysis_graph() -> StateGraph:
     )
     workflow.add_conditional_edges(
         "stock_analysis",
+        should_continue,
+        {
+            "continue": "news_sentiment",
+            "end": END
+        }
+    )
+    workflow.add_conditional_edges(
+        "news_sentiment",
         should_continue,
         {
             "continue": "signal_generation",

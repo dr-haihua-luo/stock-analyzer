@@ -12,6 +12,9 @@ class AnalysisState(TypedDict):
     sector_data: Optional[Dict[str, Any]]
     stock_data: Optional[Dict[str, Any]]
     fundamentals: Optional[Any]  # FundamentalsResult — for display only
+    news_articles: Optional[List[dict]]  # raw news summaries from Alpaca
+    stocktwits_raw: Optional[Any]  # SentimentResult dataclass
+    news_sentiment_narrative: Optional[str]  # LLM output from news_sentiment_agent
     analysis_result: Optional[Dict[str, Any]]
     signal_output: Optional[Dict[str, Any]]
     confidence_breakdown: Optional[Dict[str, Any]]

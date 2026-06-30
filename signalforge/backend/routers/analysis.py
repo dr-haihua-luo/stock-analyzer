@@ -32,6 +32,9 @@ async def analyze_ticker(
         logger.info(f"Received analysis request for {request.ticker}")
         logger.info(f"Request skip_tipranks value: {request.skip_tipranks}")
 
+        # Fetch StockTwits BEFORE running the pipeline
+        sentiment_raw = await fetch_stocktwits_sentiment(request.ticker.upper())
+
         # Initialize state for the graph
         initial_state = {
             "ticker": request.ticker.upper(),
@@ -40,6 +43,9 @@ async def analyze_ticker(
             "sector_data": None,
             "stock_data": None,
             "fundamentals": None,
+            "news_articles": None,
+            "stocktwits_raw": sentiment_raw,
+            "news_sentiment_narrative": None,
             "analysis_result": None,
             "signal_output": None,
             "confidence_breakdown": None,
@@ -133,9 +139,13 @@ async def analyze_ticker(
                 tipranks=tr_snap,
             ).model_dump()
 
-        # Fetch StockTwits sentiment (non-blocking, informational only)
-        sentiment_raw = await fetch_stocktwits_sentiment(request.ticker.upper())
+        # Attach StockTwits sentiment to response (already fetched before pipeline)
         signal_output["stocktwits_sentiment"] = StockTwitsSentiment(**sentiment_raw.__dict__) if sentiment_raw else None
+
+        # Attach news_sentiment_narrative to response
+        signal_output["news_sentiment_narrative"] = final_state.get(
+            "news_sentiment_narrative"
+        )
 
         # Save signal to database (background task)
         background_tasks.add_task(
