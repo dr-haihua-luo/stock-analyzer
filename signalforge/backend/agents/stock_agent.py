@@ -33,10 +33,10 @@ class StockAgent:
             logger.info(f"Starting stock analysis for {ticker}")
 
             # 1. OHLCV (6 months daily bars from Alpaca)
-            df = fetch_ohlcv(ticker)
+            df = await fetch_ohlcv(ticker)
 
             # 2. Current price
-            current_price = fetch_latest_price(ticker)
+            current_price = await fetch_latest_price(ticker)
 
             # 3. 52-week metrics
             w52 = compute_52w_metrics(df, current_price)

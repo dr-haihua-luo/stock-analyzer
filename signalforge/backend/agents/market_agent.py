@@ -127,7 +127,10 @@ class MarketAgent:
             narrative = f"[market] {analysis.get('outlook', 'Market conditions require monitoring.')}"
             result = {
                 "market_data": market_data,
-                "analysis": analysis,
+                "analysis": {
+                    **analysis,
+                    "market_score": market_score,
+                },
                 "timestamp": market_data["timestamp"],
                 "reasoning": [narrative]
             }

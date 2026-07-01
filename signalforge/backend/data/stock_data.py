@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Optional
+from io import StringIO
 
 import logging
 import numpy as np
@@ -22,8 +23,16 @@ from alpaca.data.timeframe import TimeFrame
 from alpaca.data.enums import Adjustment, DataFeed
 
 from backend.config import settings
+from backend.cache.redis_client import redis_client
 
 logger = logging.getLogger(__name__)
+
+# Cache TTLs for stock data
+OHLCV_CACHE_TTL = 900   # 15 minutes — bars only close once per day
+                         # but allow intraday refresh without thrash
+PRICE_CACHE_TTL = 60      # 1 minute — price genuinely moves intraday,
+                          # but this prevents two calls 5 seconds apart
+                          # from hitting two different quote ticks
 
 # --- Client singletons (credentials injected from settings, never hardcoded) ---
 _stock_client = StockHistoricalDataClient(
@@ -42,11 +51,18 @@ _news_client = NewsClient(
 # ---------------------------------------------------------------------------
 # OHLCV bars — 6 months of daily bars
 # ---------------------------------------------------------------------------
-def fetch_ohlcv(ticker: str) -> pd.DataFrame:
+async def fetch_ohlcv(ticker: str) -> pd.DataFrame:
     """
     Returns a DataFrame with columns: open, high, low, close, volume
     indexed by timestamp. Raises ValueError if no data returned.
+    Uses Redis caching to prevent signal instability from API noise.
     """
+    cache_key = f"data:ohlcv:{ticker.upper()}"
+
+    cached = await redis_client.get_raw(cache_key)
+    if cached:
+        return pd.read_json(StringIO(cached), orient="split")
+
     end   = datetime.now(timezone.utc)
     start = end - timedelta(days=182)
 
@@ -74,14 +90,31 @@ def fetch_ohlcv(ticker: str) -> pd.DataFrame:
         "open": "open", "high": "high", "low": "low",
         "close": "close", "volume": "volume",
     })
-    return df[["open", "high", "low", "close", "volume"]].sort_index()
+    df = df[["open", "high", "low", "close", "volume"]].sort_index()
+
+    # Ensure numeric types for all columns to avoid comparison issues
+    for col in ["open", "high", "low", "close", "volume"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Cache the result
+    await redis_client.set_raw(cache_key, df.to_json(orient="split"), ttl=OHLCV_CACHE_TTL)
+    return df
 
 
 # ---------------------------------------------------------------------------
 # Latest quote — for current price
 # ---------------------------------------------------------------------------
-def fetch_latest_price(ticker: str) -> float:
-    """Returns the latest ask price (falls back to last trade price)."""
+async def fetch_latest_price(ticker: str) -> float:
+    """
+    Returns the latest ask price (falls back to last trade price).
+    Uses Redis caching to prevent signal instability from quote tick noise.
+    """
+    cache_key = f"data:price:{ticker.upper()}"
+
+    cached = await redis_client.get_raw(cache_key)
+    if cached:
+        return float(cached)
+
     request = StockLatestQuoteRequest(symbol_or_symbols=ticker)
     quotes  = _stock_client.get_stock_latest_quote(request)
     quote   = quotes[ticker]
@@ -90,6 +123,9 @@ def fetch_latest_price(ticker: str) -> float:
     price   = quote.ask_price or quote.bid_price
     if not price or price <= 0:
         raise ValueError(f"Could not retrieve valid latest price for {ticker}")
+
+    # Cache the price
+    await redis_client.set_raw(cache_key, str(price), ttl=PRICE_CACHE_TTL)
     return float(price)
 
 
@@ -119,7 +155,7 @@ def fetch_snapshot(ticker: str) -> dict:
 # ---------------------------------------------------------------------------
 def compute_52w_metrics(df: pd.DataFrame, current_price: float) -> dict:
     """Compute 52-week high/low from the OHLCV dataframe."""
-    year_ago = datetime.now(timezone.utc) - timedelta(days=365)
+    year_ago = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=365)
     yearly   = df[df.index >= year_ago]
     high_52w = float(yearly["high"].max()) if not yearly.empty else current_price
     low_52w  = float(yearly["low"].min())  if not yearly.empty else current_price

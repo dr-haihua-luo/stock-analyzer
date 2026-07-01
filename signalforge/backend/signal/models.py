@@ -79,6 +79,7 @@ class SignalOutput(BaseModel):
     ticker: str = Field(description="Stock ticker symbol")
     signal: str = Field(description="BUY, HOLD, or SELL signal")
     confidence: float = Field(description="Confidence score from 0.0 to 1.0")
+    composite_score: float = Field(default=0.0, description="Composite score used for signal determination (-1.0 to +1.0)")
     timestamp: datetime = Field(description="Analysis timestamp")
     stocktwits_sentiment: Optional[StockTwitsSentiment] = None
     fundamentals: Optional[FundamentalsDisplay] = None

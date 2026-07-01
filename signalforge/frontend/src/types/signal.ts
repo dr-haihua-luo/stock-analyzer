@@ -67,6 +67,7 @@ export interface SignalOutput {
   ticker: string;
   signal: 'BUY' | 'HOLD' | 'SELL';
   confidence: number;
+  composite_score: number;
   timestamp: string;
   stocktwits_sentiment?: StockTwitsSentiment | null;
   fundamentals?: FundamentalsDisplay | null;

@@ -127,6 +127,29 @@ class RedisClient:
             logger.warning(f"Error setting key {key} in Redis: {e}")
             return False
 
+    async def get_raw(self, key: str) -> Optional[str]:
+        """Get raw string value from Redis without JSON deserialization."""
+        if not self.redis:
+            logger.debug("Redis not connected, returning None for get_raw operation")
+            return None
+
+        try:
+            value = await self.redis.get(key)
+            return value.decode("utf-8") if isinstance(value, bytes) else value
+        except Exception as exc:
+            logger.warning("cache get_raw error (key=%s): %s", key, exc)
+            return None
+
+    async def set_raw(self, key: str, value: str, ttl: int) -> None:
+        """Set raw string value in Redis with TTL."""
+        if not self.redis:
+            logger.debug("Redis not connected, skipping set_raw operation for key: %s", key)
+            return
+        try:
+            await self.redis.set(key, value, ex=ttl)
+        except Exception as exc:
+            logger.warning("cache set_raw error (key=%s): %s", key, exc)
+
     async def delete(self, key: str) -> int:
         """Delete key from Redis."""
         if not self.redis:

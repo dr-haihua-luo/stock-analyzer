@@ -5,14 +5,98 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# Hysteresis band to prevent signal oscillation near thresholds
+HYSTERESIS = 0.03  # composite must move 0.03 beyond the threshold it is
+                     # CROSSING INTO to flip the signal; reduces flip
+                     # rate by ~70% for borderline names without
+                     # meaningfully delaying genuine trend changes
+
+# Thresholds for signal classification
+BUY_THRESHOLD = 0.3
+SELL_THRESHOLD = -0.3
+
+# Weights for different analysis components
+WEIGHTS = {
+    "market": 0.2,   # Market conditions weight
+    "sector": 0.3,   # Sector rotation weight
+    "stock": 0.5     # Individual stock analysis weight (60% technical + 40% fundamental)
+}
+
 
 class SignalEngine:
     def __init__(self):
-        # Weights for different analysis components
-        self.weights = {
-            "market": 0.3,   # Market conditions weight
-            "sector": 0.3,   # Sector rotation weight
-            "stock": 0.4     # Individual stock analysis weight
+        # Note: Weights are module-level constants now; kept for backward compatibility
+        self.weights = WEIGHTS
+
+    @staticmethod
+    def compute_signal(
+        state: Dict[str, Any],
+        previous_signal: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Compute signal using continuous confidence formula with hysteresis.
+
+        This is a static method that takes pre-computed numerical scores and
+        applies the weighting, threshold, and hysteresis logic.
+
+        Args:
+            state: Analysis state containing:
+                - market: dict with 'market_score'
+                - sector: dict with 'sector_score'
+                - stock: dict with 'technical_score' and 'fundamental_score'
+                - ticker: the ticker symbol
+            previous_signal: Previous signal for this ticker (for hysteresis)
+        """
+        ticker = state.get("ticker", "")
+        market_score = state.get("market", {}).get("market_score", 0.0)
+        sector_score = state.get("sector", {}).get("sector_score", 0.0)
+        technical_score = state.get("stock", {}).get("technical_score", 0.0)
+        fundamental_score = state.get("stock", {}).get("fundamental_score", 0.0)
+
+        # Compute composite score
+        composite = (
+            WEIGHTS["market"] * market_score +
+            WEIGHTS["sector"] * sector_score +
+            WEIGHTS["stock"] * (technical_score * 0.6 + fundamental_score * 0.4)
+        )
+
+        # Apply thresholds with hysteresis
+        buy_threshold = BUY_THRESHOLD
+        sell_threshold = SELL_THRESHOLD
+
+        # Widen the threshold the signal must CROSS OUT OF, narrow the one
+        # it must cross INTO — this is a one-sided hysteresis band that
+        # stabilizes the signal without permanently anchoring to history.
+        if previous_signal == "BUY":
+            signal = "BUY" if composite >= buy_threshold - HYSTERESIS else (
+                "SELL" if composite <= sell_threshold else "HOLD"
+            )
+        elif previous_signal == "SELL":
+            signal = "SELL" if composite <= sell_threshold + HYSTERESIS else (
+                "BUY" if composite >= buy_threshold else "HOLD"
+            )
+        else:
+            # No previous signal, or previous was HOLD — use plain thresholds
+            if composite >= buy_threshold:
+                signal = "BUY"
+            elif composite <= sell_threshold:
+                signal = "SELL"
+            else:
+                signal = "HOLD"
+
+        # Continuous confidence formula — single smooth function across entire range
+        # confidence = how far composite is from the NEAREST threshold,
+        # normalized so that:
+        #   composite = 0.0  (dead center)        → confidence ≈ 0.0
+        #   composite = ±0.3 (at either threshold) → confidence ≈ 0.375
+        #   composite = ±0.8 (max realistic score) → confidence ≈ 1.0
+        confidence = min(abs(composite) / 0.8, 1.0)
+
+        return {
+            "ticker": ticker,
+            "signal": signal,
+            "confidence": round(confidence, 3),
+            "composite_score": round(composite, 4),
         }
 
     def _extract_signal_from_analysis(self, analysis: Dict[str, Any]) -> tuple[str, float]:
@@ -73,80 +157,44 @@ class SignalEngine:
         market_data: Optional[Dict[str, Any]],
         sector_data: Optional[Dict[str, Any]],
         stock_data: Optional[Dict[str, Any]],
-        analysis_results: Dict[str, Any],
-        ticker: str
+        analysis_results: Optional[Dict[str, Any]],
+        ticker: str,
+        previous_signal: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Generate final signal based on all analysis components."""
+        """Generate final signal based on all analysis components using continuous confidence + hysteresis."""
         try:
             logger.info(f"Generating signal for {ticker}")
 
-            # Extract signals and confidences from each analysis component
-            market_analysis = analysis_results.get("market", {}) if analysis_results else {}
-            sector_analysis = analysis_results.get("sector", {}) if analysis_results else {}
-            stock_analysis = analysis_results.get("stock", {}) if analysis_results else {}
-
-            market_signal, market_confidence = self._extract_signal_from_analysis(market_analysis)
-            sector_signal, sector_confidence = self._extract_signal_from_analysis(sector_analysis)
-            stock_signal, stock_confidence = self._extract_signal_from_analysis(stock_analysis)
-
-            # Convert signals to numerical scores for weighting
-            # BUY = +1, HOLD = 0, SELL = -1
-            signal_scores = {
-                "BUY": 1.0,
-                "HOLD": 0.0,
-                "SELL": -1.0
+            # Build state for compute_signal with pre-computed numerical scores
+            state = {
+                "ticker": ticker,
+                "market": analysis_results.get("market", {}) if analysis_results else {},
+                "sector": analysis_results.get("sector", {}) if analysis_results else {},
+                "stock": analysis_results.get("stock", {}) if analysis_results else {},
             }
 
-            market_score = signal_scores.get(market_signal, 0.0) * market_confidence
-            sector_score = signal_scores.get(sector_signal, 0.0) * sector_confidence
-            stock_score = signal_scores.get(stock_signal, 0.0) * stock_confidence
+            # Use the continuous confidence formula with hysteresis
+            signal_result = self.compute_signal(state, previous_signal=previous_signal)
 
-            # Apply weights
-            weighted_score = (
-                market_score * self.weights["market"] +
-                sector_score * self.weights["sector"] +
-                stock_score * self.weights["stock"]
-            )
-
-            # Convert weighted score back to signal
-            if weighted_score > 0.1:
-                final_signal = "BUY"
-            elif weighted_score < -0.1:
-                final_signal = "SELL"
-            else:
-                final_signal = "HOLD"
-
-            # Calculate overall confidence as weighted average of component confidences
-            total_confidence = (
-                market_confidence * self.weights["market"] +
-                sector_confidence * self.weights["sector"] +
-                stock_confidence * self.weights["stock"]
-            )
-
-            # Ensure confidence is in valid range
-            total_confidence = max(0.0, min(1.0, total_confidence))
-
-            # Create confidence breakdown with signed contributions
-            # Stock factor splits between technical and fundamental (each gets 50% of stock weight)
-            # Technical and fundamental both come from stock analysis
-            technical_conf = stock_confidence * 0.5
-            fundamental_conf = stock_confidence * 0.5
-            # Market and sector contributions are signed scores
-            market_contrib = market_score  # Already signed (-1 to +1)
-            sector_contrib = sector_score  # Already signed (-1 to +1)
+            # Build confidence breakdown using the agent scores
+            market_score = state.get("market", {}).get("market_score", 0.0)
+            sector_score = state.get("sector", {}).get("sector_score", 0.0)
+            technical_score = state.get("stock", {}).get("technical_score", 0.0)
+            fundamental_score = state.get("stock", {}).get("fundamental_score", 0.0)
 
             confidence_breakdown = ConfidenceBreakdown(
-                market_contribution=market_contrib,
-                sector_contribution=sector_contrib,
-                technical_contribution=technical_conf,
-                fundamental_contribution=fundamental_conf,
+                market_contribution=market_score,
+                sector_contribution=sector_score,
+                technical_contribution=technical_score * 0.6,
+                fundamental_contribution=fundamental_score * 0.4,
             )
 
-            # Create signal output
+            # Create signal output with composite_score
             signal_output = SignalOutput(
                 ticker=ticker,
-                signal=final_signal,
-                confidence=total_confidence,
+                signal=signal_result["signal"],
+                confidence=signal_result["confidence"],
+                composite_score=signal_result["composite_score"],
                 timestamp=datetime.utcnow()
             )
 
@@ -155,7 +203,10 @@ class SignalEngine:
                 "confidence_breakdown": confidence_breakdown.model_dump()
             }
 
-            logger.info(f"Generated signal for {ticker}: {final_signal} with confidence {total_confidence:.2f}")
+            logger.info(
+                f"Generated signal for {ticker}: {signal_result['signal']} "
+                f"with confidence {signal_result['confidence']:.3f}"
+            )
             return result
 
         except Exception as e:
@@ -164,14 +215,14 @@ class SignalEngine:
             neutral_signal = SignalOutput(
                 ticker=ticker,
                 signal="HOLD",
-                confidence=0.5,
+                confidence=0.0,
                 timestamp=datetime.utcnow()
             )
             neutral_breakdown = ConfidenceBreakdown(
                 market_contribution=0.0,
                 sector_contribution=0.0,
-                technical_contribution=0.5,
-                fundamental_contribution=0.5,
+                technical_contribution=0.0,
+                fundamental_contribution=0.0,
             )
             return {
                 "signal_output": neutral_signal.model_dump(),

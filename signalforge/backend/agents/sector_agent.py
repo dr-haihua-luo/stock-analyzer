@@ -138,9 +138,14 @@ class SectorAgent:
 
             # Build LLM narrative for the reasoning field
             narrative = f"[sector] {analysis.get('outlook', 'Sector rotation requires continued observation.')}"
+            # Get sector_score from llm_input (already computed)
+            sector_score = llm_input.get("sector_score", 0.0)
             result = {
                 "sector_data": sector_performance,
-                "analysis": analysis,
+                "analysis": {
+                    **analysis,
+                    "sector_score": sector_score,
+                },
                 "timestamp": sector_performance.get("timestamp", None),
                 "reasoning": [narrative]
             }

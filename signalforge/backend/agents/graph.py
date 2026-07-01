@@ -233,6 +233,7 @@ async def signal_generation_node(state: AnalysisState) -> AnalysisState:
         stock_data = state_dict.get("stock_data") or {}
         analysis_results = state_dict.get("analysis_result", {}) or {}
         ticker = state_dict.get("ticker", "") or ""
+        previous_signal = state_dict.get("previous_signal")
 
         # Ensure all data is in expected dict format
         if not isinstance(market_data, dict):
@@ -249,7 +250,8 @@ async def signal_generation_node(state: AnalysisState) -> AnalysisState:
             sector_data=sector_data,
             stock_data=stock_data,
             analysis_results=analysis_results,
-            ticker=ticker
+            ticker=ticker,
+            previous_signal=previous_signal,
         )
 
         # Safely extract results from signal engine

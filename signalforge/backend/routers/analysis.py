@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, desc
 from backend.db.session import get_db, AsyncSessionLocal
 from backend.db.models import Signal
 from backend.signal.models import (
@@ -14,8 +15,25 @@ from backend.agents.graph import analysis_graph
 from backend.data.stocktwits_data import fetch_stocktwits_sentiment
 import logging
 from datetime import datetime
+from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+async def _get_previous_signal(db: AsyncSession, ticker: str) -> Optional[str]:
+    """
+    Fetch the most recent signal for a ticker from PostgreSQL.
+    Returns the signal string (BUY/HOLD/SELL) or None if no previous signal exists.
+    """
+    stmt = (
+        select(Signal.signal)
+        .where(Signal.ticker == ticker.upper())
+        .order_by(desc(Signal.timestamp))
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    row = result.scalar_one_or_none()
+    return row
 
 router = APIRouter()
 
@@ -23,7 +41,8 @@ router = APIRouter()
 @router.post("/analyze", response_model=AnalysisResponse)
 async def analyze_ticker(
     request: AnalysisRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Analyze a ticker and generate a trading signal.
@@ -35,10 +54,15 @@ async def analyze_ticker(
         # Fetch StockTwits BEFORE running the pipeline
         sentiment_raw = await fetch_stocktwits_sentiment(request.ticker.upper())
 
+        # Fetch previous signal for hysteresis
+        previous_signal = await _get_previous_signal(db, request.ticker)
+        logger.info(f"Previous signal for {request.ticker}: {previous_signal}")
+
         # Initialize state for the graph
         initial_state = {
             "ticker": request.ticker.upper(),
             "skip_tipranks": request.skip_tipranks,
+            "previous_signal": previous_signal,
             "market_data": None,
             "sector_data": None,
             "stock_data": None,
