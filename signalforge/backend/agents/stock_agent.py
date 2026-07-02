@@ -104,7 +104,12 @@ class StockAgent:
                 max_tokens=500
             )
 
-            narrative = llm_response.strip()
+            # Handle case where LLM returns None or empty response
+            if llm_response is None:
+                narrative = "No LLM response available"
+                logger.warning(f"LLM returned None for {ticker}")
+            else:
+                narrative = llm_response.strip() if llm_response.strip() else "No LLM response available"
             logger.info(f"LLM response = {narrative}")
 
             # Use real fundamental score from FinViz/TipRanks, fallback to 0.0

@@ -31,11 +31,6 @@ function App() {
     }
   };
 
-  // Initial analysis on mount only - runs once when component mounts
-  useEffect(() => {
-    handleAnalyze();
-  }, []); // Empty dependency array ensures this only runs on mount
-
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-md">

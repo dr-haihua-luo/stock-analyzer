@@ -18,8 +18,14 @@ export interface FinvizSnapshot {
   pe_ratio: number | null;
   forward_pe: number | null;
   peg_ratio: number | null;
+  ps_ratio: number | null;
+  pb_ratio: number | null;
   profit_margin_pct: number | null;
+  roa_pct: number | null;
   roe_pct: number | null;
+  roi_pct: number | null;
+  gross_margin_pct: number | null;
+  oper_margin_pct: number | null;
   debt_to_equity: number | null;
   insider_own_pct: number | null;
   net_insider_sentiment: number | null;

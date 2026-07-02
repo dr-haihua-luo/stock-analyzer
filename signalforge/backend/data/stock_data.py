@@ -61,7 +61,10 @@ async def fetch_ohlcv(ticker: str) -> pd.DataFrame:
 
     cached = await redis_client.get_raw(cache_key)
     if cached:
-        return pd.read_json(StringIO(cached), orient="split")
+        df = pd.read_json(StringIO(cached), orient="split")
+        # Ensure index is datetime64[ns, UTC] for proper comparison with compute_52w_metrics
+        df.index = pd.to_datetime(df.index, utc=True)
+        return df
 
     end   = datetime.now(timezone.utc)
     start = end - timedelta(days=182)
@@ -155,8 +158,11 @@ def fetch_snapshot(ticker: str) -> dict:
 # ---------------------------------------------------------------------------
 def compute_52w_metrics(df: pd.DataFrame, current_price: float) -> dict:
     """Compute 52-week high/low from the OHLCV dataframe."""
-    year_ago = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=365)
-    yearly   = df[df.index >= year_ago]
+    year_ago_ts = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=365)
+    # Ensure the index is in a compatible format for comparison
+    # Convert to datetime64[ns, UTC] if not already
+    df_index = pd.to_datetime(df.index, utc=True)
+    yearly = df[df_index >= year_ago_ts]
     high_52w = float(yearly["high"].max()) if not yearly.empty else current_price
     low_52w  = float(yearly["low"].min())  if not yearly.empty else current_price
     pct_from_high = ((current_price - high_52w) / high_52w) * 100
