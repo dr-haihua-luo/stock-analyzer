@@ -12,6 +12,72 @@ interface Props {
   market_narrative?: string | null;
   sector_narrative?: string | null;
   stock_narrative?: string | null;
+  // Additional market LLM fields
+  market_sentiment?: string | null;
+  market_rate_implications?: string | null;
+  market_volatility_expectation?: string | null;
+  market_outlook?: string | null;
+  // Additional sector LLM fields
+  sector_rotation_momentum?: string | null;
+  sector_economic_implications?: string | null;
+  sector_momentum_assessment?: string | null;
+  sector_outlook?: string | null;
+}
+
+/**
+ * Render stock narrative with section-aware parsing.
+ * The stock narrative uses a 5-label template with TECHNICAL:/SETUP:/FUNDAMENTALS:/ANALYST VIEW:/SENTIMENT:
+ * Each section is rendered in its own colored block for readability.
+ */
+function renderStockNarrative(narrative: string | null | undefined) {
+  if (!narrative) return (
+    <p className="text-xs text-gray-700 italic mt-1">No analysis available</p>
+  );
+
+  const LABELS = ["TECHNICAL", "SETUP", "FUNDAMENTALS", "ANALYST VIEW", "SENTIMENT"];
+  const sections: { label: string; text: string }[] = [];
+
+  LABELS.forEach((label, i) => {
+    const nextLabels = LABELS.slice(i + 1).join("|");
+    const pattern = new RegExp(
+      `${label}:\\s*(.+?)(?=${nextLabels}:|$)`, "s"
+    );
+    const match = narrative.match(pattern);
+    if (match?.[1]?.trim()) {
+      sections.push({ label, text: match[1].trim() });
+    }
+  });
+
+  // If parsing found structured sections, render them individually
+  if (sections.length >= 1) {
+    return (
+      <div className="mt-1 space-y-1.5">
+        {sections.map(({ label, text }) => (
+          <div key={label}
+               className="bg-gray-800/50 rounded px-2.5 py-1.5
+                          border-l-2 border-amber-700">
+            <span className="text-xs font-semibold text-amber-500
+                             uppercase tracking-wide mr-1.5">
+              {label}:
+            </span>
+            <span className="text-xs text-gray-300 leading-relaxed">
+              {text}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Fallback: render as pre-wrap paragraph if no sections parsed
+  return (
+    <p className="text-xs text-gray-400 leading-relaxed
+                  bg-gray-800/50 rounded-lg px-3 py-2
+                  border-l-2 border-gray-600 mt-1
+                  whitespace-pre-wrap">
+      {narrative}
+    </p>
+  );
 }
 
 export default function ConfidenceBreakdown({
@@ -19,6 +85,16 @@ export default function ConfidenceBreakdown({
   market_narrative,
   sector_narrative,
   stock_narrative,
+  // Market LLM fields
+  market_sentiment,
+  market_rate_implications,
+  market_volatility_expectation,
+  market_outlook,
+  // Sector LLM fields
+  sector_rotation_momentum,
+  sector_economic_implications,
+  sector_momentum_assessment,
+  sector_outlook,
 }: Props) {
 
   if (!breakdown) {
@@ -48,6 +124,13 @@ export default function ConfidenceBreakdown({
       barColor:    "bg-blue-500",
       textColor:   "text-blue-400",
       subtext:     null,
+      // Additional market LLM fields
+      llm_fields: {
+        sentiment: market_sentiment,
+        rate_implications: market_rate_implications,
+        volatility_expectation: market_volatility_expectation,
+        outlook: market_outlook,
+      },
     },
     {
       label:       "Sector",
@@ -56,6 +139,13 @@ export default function ConfidenceBreakdown({
       barColor:    "bg-purple-500",
       textColor:   "text-purple-400",
       subtext:     null,
+      // Additional sector LLM fields
+      llm_fields: {
+        rotation_momentum: sector_rotation_momentum,
+        economic_implications: sector_economic_implications,
+        momentum_assessment: sector_momentum_assessment,
+        outlook: sector_outlook,
+      },
     },
     {
       label:       "Stock",
@@ -64,6 +154,7 @@ export default function ConfidenceBreakdown({
       barColor:    "bg-amber-500",
       textColor:   "text-amber-400",
       subtext:     `Technical ${(techContrib * 100).toFixed(1)}% · Fundamental ${(fundContrib * 100).toFixed(1)}%`,
+      llm_fields: null,
     },
   ];
 
@@ -114,17 +205,43 @@ export default function ConfidenceBreakdown({
                 <p className="text-xs text-gray-600 mb-2">{area.subtext}</p>
               )}
 
-              {/* LLM narrative — shown if available */}
-              {area.narrative ? (
-                <p className="text-xs text-gray-400 leading-relaxed
-                               bg-gray-800/50 rounded-lg px-3 py-2
-                               border-l-2 border-gray-600 mt-1">
-                  {area.narrative}
-                </p>
+              {/* LLM narrative and detailed fields — shown if available */}
+              {area.label === "Stock" ? (
+                // Stock: use section-aware renderer for multi-line narrative
+                renderStockNarrative(area.narrative)
               ) : (
-                <p className="text-xs text-gray-700 italic mt-1">
-                  No analysis available
-                </p>
+                // Market and Sector show all LLM fields
+                Object.values(area.llm_fields).some(v => v) ? (
+                  <div className="text-xs text-gray-400 leading-relaxed
+                                 bg-gray-800/50 rounded-lg px-3 py-2
+                                 border-l-2 border-gray-600 mt-1 space-y-1">
+                    {area.llm_fields.sentiment && (
+                      <p><span className="text-gray-500">Sentiment:</span> {area.llm_fields.sentiment}</p>
+                    )}
+                    {area.llm_fields.rate_implications && (
+                      <p><span className="text-gray-500">Rate Implications:</span> {area.llm_fields.rate_implications}</p>
+                    )}
+                    {area.llm_fields.volatility_expectation && (
+                      <p><span className="text-gray-500">Volatility Expectation:</span> {area.llm_fields.volatility_expectation}</p>
+                    )}
+                    {area.llm_fields.outlook && (
+                      <p><span className="text-gray-500">Outlook:</span> {area.llm_fields.outlook}</p>
+                    )}
+                    {area.llm_fields.rotation_momentum && (
+                      <p><span className="text-gray-500">Rotation Momentum:</span> {area.llm_fields.rotation_momentum}</p>
+                    )}
+                    {area.llm_fields.economic_implications && (
+                      <p><span className="text-gray-500">Economic Implications:</span> {area.llm_fields.economic_implications}</p>
+                    )}
+                    {area.llm_fields.momentum_assessment && (
+                      <p><span className="text-gray-500">Momentum Assessment:</span> {area.llm_fields.momentum_assessment}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-700 italic mt-1">
+                    No analysis available
+                  </p>
+                )
               )}
             </div>
           );

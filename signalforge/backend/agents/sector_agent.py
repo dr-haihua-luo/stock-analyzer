@@ -118,9 +118,22 @@ class SectorAgent:
 
                 llm_response = await llm_client.generate_structured_completion(prompt)
 
-                # Store in cache
-                await redis_client.set_llm_narrative("sector", llm_input, llm_response)
-                logger.debug("sector_agent: LLM called and narrative cached")
+                # Handle empty string gracefully - don't cache, use fallback
+                if not llm_response:
+                    logger.warning(
+                        "sector_agent: LLM returned empty response for %s sector",
+                        llm_input.get('ticker_sector', 'all')
+                    )
+                    llm_response = json.dumps({
+                        "rotation_momentum": "monitoring",
+                        "economic_implications": "insufficient data",
+                        "momentum_assessment": "caution",
+                        "outlook": f"{llm_input.get('ticker_sector', 'Tech')} sector ranks {llm_input.get('sector_rank', 1)}/11 with score {llm_input.get('sector_score', 0):.3f}"
+                    })
+                else:
+                    # Store in cache
+                    await redis_client.set_llm_narrative("sector", llm_input, llm_response)
+                    logger.debug("sector_agent: LLM called and narrative cached")
             else:
                 logger.debug("sector_agent: LLM narrative served from cache")
 
@@ -137,7 +150,11 @@ class SectorAgent:
                 }
 
             # Build LLM narrative for the reasoning field
-            narrative = f"[sector] {analysis.get('outlook', 'Sector rotation requires continued observation.')}"
+            outlook = analysis.get('outlook', '')
+            sector_score = analysis.get("sector_score", llm_input.get("sector_score", 0.0))
+            ticker_sector = llm_input.get("ticker_sector", "Tech")
+            sector_rank = llm_input.get("sector_rank", 1)
+            narrative = f"[sector] {outlook}" if outlook else f"[sector] {ticker_sector} sector ranks {sector_rank}/11 with a score of {sector_score:+.3f}."
             # Get sector_score from llm_input (already computed)
             sector_score = llm_input.get("sector_score", 0.0)
             result = {

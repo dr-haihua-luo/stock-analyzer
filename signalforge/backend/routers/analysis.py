@@ -35,6 +35,23 @@ async def _get_previous_signal(db: AsyncSession, ticker: str) -> Optional[str]:
     row = result.scalar_one_or_none()
     return row
 
+
+def _extract_narrative(reasoning: list, agent: str) -> Optional[str]:
+    """
+    Extract narrative from reasoning list for a given agent.
+
+    Args:
+        reasoning: List of reasoning strings (e.g., "[market] outlook text")
+        agent: Agent name to filter by (e.g., "market", "sector", "stock")
+
+    Returns:
+        The narrative text without the agent prefix, or None if not found.
+    """
+    for entry in reasoning or []:
+        if isinstance(entry, str) and entry.startswith(f"[{agent}]"):
+            return entry[len(f"[{agent}]"):].strip()
+    return None
+
 router = APIRouter()
 
 
@@ -97,23 +114,37 @@ async def analyze_ticker(
             logger.error(f"Missing signal output or confidence breakdown for {request.ticker}")
             raise HTTPException(status_code=500, detail="Analysis completed but results are incomplete")
 
-        # Extract narratives from reasoning field
-        def _extract_narrative(reasoning: list, prefix: str) -> str | None:
-            """
-            Find the first reasoning entry that starts with [prefix]
-            and return the text after the prefix tag.
-            e.g. "[market] VIX at 18.5..." -> "VIX at 18.5..."
-            """
-            tag = f"[{prefix}]"
-            for entry in reasoning:
-                if isinstance(entry, str) and entry.startswith(tag):
-                    return entry[len(tag):].strip()
-            return None
+        # Extract narratives and detailed LLM fields from analysis_result
+        analysis_result = final_state.get("analysis_result", {})
+        market_analysis = analysis_result.get("market", {})
+        sector_analysis = analysis_result.get("sector", {})
+        stock_analysis = analysis_result.get("stock", {})
 
-        reasoning = final_state.get("reasoning", [])
-        signal_output["market_narrative"] = _extract_narrative(reasoning, "market")
-        signal_output["sector_narrative"] = _extract_narrative(reasoning, "sector")
-        signal_output["stock_narrative"] = _extract_narrative(reasoning, "stock")
+        # Extract narratives from reasoning list (authoritative source)
+        signal_output["market_narrative"] = market_analysis.get("outlook") or _extract_narrative(state.get("reasoning"), "market")
+        signal_output["sector_narrative"] = sector_analysis.get("outlook") or _extract_narrative(state.get("reasoning"), "sector")
+        signal_output["stock_narrative"] = stock_analysis.get("stock_analysis") or _extract_narrative(state.get("reasoning"), "stock")
+
+        # Debug: confirm all three narratives are populated
+        logger.info(
+            "Narratives extracted — market: %s chars, sector: %s chars, stock: %s chars",
+            len(signal_output["market_narrative"] or ""),
+            len(signal_output["sector_narrative"] or ""),
+            len(signal_output["stock_narrative"] or ""),
+        )
+
+        # Extract market LLM fields
+        signal_output["market_sentiment"] = market_analysis.get("sentiment")
+        signal_output["market_rate_implications"] = market_analysis.get("rate_implications")
+        signal_output["market_volatility_expectation"] = market_analysis.get("volatility_expectation")
+        signal_output["market_outlook"] = market_analysis.get("outlook")
+
+        # Extract sector LLM fields
+        signal_output["sector_narrative"] = sector_analysis.get("outlook") or signal_output["sector_narrative"]
+        signal_output["sector_rotation_momentum"] = sector_analysis.get("rotation_momentum")
+        signal_output["sector_economic_implications"] = sector_analysis.get("economic_implications")
+        signal_output["sector_momentum_assessment"] = sector_analysis.get("momentum_assessment")
+        signal_output["sector_outlook"] = sector_analysis.get("outlook")
 
         # Build FundamentalsDisplay from state
         raw_fund = final_state.get("fundamentals")

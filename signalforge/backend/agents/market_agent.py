@@ -105,9 +105,22 @@ class MarketAgent:
 
                 llm_response = await llm_client.generate_structured_completion(prompt)
 
-                # Store in cache
-                await redis_client.set_llm_narrative("market", llm_input, llm_response)
-                logger.debug("market_agent: LLM called and narrative cached")
+                # Handle empty string gracefully - don't cache, use fallback
+                if not llm_response:
+                    logger.warning(
+                        "market_agent: LLM returned empty response for VIX %.1f, yield spread %.2f",
+                        llm_input['vix_value'], llm_input['yield_curve_spread']
+                    )
+                    llm_response = json.dumps({
+                        "sentiment": "neutral",
+                        "rate_implications": "monitor closely",
+                        "volatility_expectation": "moderate",
+                        "outlook": f"Market regime is {macro_regime} with VIX at {vix_value:.1f}"
+                    })
+                else:
+                    # Store in cache
+                    await redis_client.set_llm_narrative("market", llm_input, llm_response)
+                    logger.debug("market_agent: LLM called and narrative cached")
             else:
                 logger.debug("market_agent: LLM narrative served from cache")
 
@@ -124,7 +137,8 @@ class MarketAgent:
                 }
 
             # Build LLM narrative for the reasoning field
-            narrative = f"[market] {analysis.get('outlook', 'Market conditions require monitoring.')}"
+            outlook = analysis.get('outlook', '')
+            narrative = f"[market] {outlook}" if outlook else f"[market] VIX at {vix_value:.1f} ({vix_regime}), regime is {macro_regime}."
             result = {
                 "market_data": market_data,
                 "analysis": {

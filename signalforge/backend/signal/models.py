@@ -93,6 +93,16 @@ class SignalOutput(BaseModel):
     sector_narrative: Optional[str] = None
     stock_narrative: Optional[str] = None
     news_sentiment_narrative: Optional[str] = None
+    # Additional market LLM response fields
+    market_sentiment: Optional[str] = None
+    market_rate_implications: Optional[str] = None
+    market_volatility_expectation: Optional[str] = None
+    market_outlook: Optional[str] = None
+    # Additional sector LLM response fields
+    sector_rotation_momentum: Optional[str] = None
+    sector_economic_implications: Optional[str] = None
+    sector_momentum_assessment: Optional[str] = None
+    sector_outlook: Optional[str] = None
 
 
 class ConfidenceBreakdown(BaseModel):

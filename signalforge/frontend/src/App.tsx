@@ -3,7 +3,6 @@ import { useAnalysis } from './hooks/useAnalysis';
 import SignalCard from './components/SignalCard';
 import MarketOverview from './components/MarketOverview';
 import SectorHeatmap from './components/SectorHeatmap';
-import StockChart from './components/StockChart';
 import ConfidenceBreakdown from './components/ConfidenceBreakdown';
 import FundamentalPanel from './components/FundamentalPanel';
 import SentimentPanel from './components/SentimentPanel';
@@ -97,6 +96,16 @@ function App() {
               market_narrative={analysisResult.signal?.market_narrative}
               sector_narrative={analysisResult.signal?.sector_narrative}
               stock_narrative={analysisResult.signal?.stock_narrative}
+              // Market LLM fields
+              market_sentiment={analysisResult.signal?.market_sentiment}
+              market_rate_implications={analysisResult.signal?.market_rate_implications}
+              market_volatility_expectation={analysisResult.signal?.market_volatility_expectation}
+              market_outlook={analysisResult.signal?.market_outlook}
+              // Sector LLM fields
+              sector_rotation_momentum={analysisResult.signal?.sector_rotation_momentum}
+              sector_economic_implications={analysisResult.signal?.sector_economic_implications}
+              sector_momentum_assessment={analysisResult.signal?.sector_momentum_assessment}
+              sector_outlook={analysisResult.signal?.sector_outlook}
             />
 
             {/* Fundamental Analysis Panel */}
@@ -136,12 +145,6 @@ function App() {
             <div className="grid gap-6 md:grid-cols-2">
               <MarketOverview />
               <SectorHeatmap />
-            </div>
-
-            {/* Example Stock Chart */}
-            <div className="mt-8">
-              <h2 className="text-xl font-semibold mb-4 text-gray-800">Example: AAPL Chart</h2>
-              <StockChart ticker="AAPL" />
             </div>
           </>
         )}

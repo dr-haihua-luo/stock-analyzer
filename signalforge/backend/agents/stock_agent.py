@@ -105,11 +105,15 @@ class StockAgent:
             )
 
             # Handle case where LLM returns None or empty response
-            if llm_response is None:
-                narrative = "No LLM response available"
-                logger.warning(f"LLM returned None for {ticker}")
+            if not llm_response:
+                logger.warning(f"LLM returned empty response for {ticker} — using fallback narrative")
+                narrative = (
+                    f"RSI {technicals['rsi_14']:.1f}, "
+                    f"MACD {technicals['macd_signal']['trend'] if isinstance(technicals['macd_signal'], dict) else technicals['macd_signal']}, "
+                    f"fundamental score {fund_score_str}."
+                )
             else:
-                narrative = llm_response.strip() if llm_response.strip() else "No LLM response available"
+                narrative = llm_response.strip()
             logger.info(f"LLM response = {narrative}")
 
             # Use real fundamental score from FinViz/TipRanks, fallback to 0.0

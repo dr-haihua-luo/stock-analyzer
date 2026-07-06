@@ -209,12 +209,13 @@ class RedisClient:
         input_dict: dict,
         narrative: str,
         ttl: int = LLM_CACHE_TTL,
-    ) -> None:
+    ) -> bool:
         """
         Store an LLM narrative string in Redis.
 
         TTL defaults to LLM_CACHE_TTL (3600s = 60 min).
         Never raises — Redis errors are logged and silently ignored.
+        Returns False if narrative is empty/None (nothing to cache).
 
         Args:
             agent:      "market" | "sector"
@@ -225,12 +226,18 @@ class RedisClient:
         key = _make_llm_cache_key(agent, input_dict)
         if not self.redis:
             logger.debug("Redis not connected, skipping LLM cache set operation key=%s", key)
-            return
+            return False
+        # Refuse to cache empty strings - they indicate a failed LLM call
+        if not narrative or not narrative.strip():
+            logger.debug("LLM cache SKIP key=%s — narrative is empty (LLM call failed)", key)
+            return False
         try:
             await self.redis.set(key, narrative, ex=ttl)
             logger.debug("LLM cache SET  key=%s ttl=%ds", key, ttl)
+            return True
         except Exception as exc:
             logger.warning("LLM cache set error (key=%s): %s", key, exc)
+            return False
 
 
 # --- LLM Cache Redis CLI reference ---

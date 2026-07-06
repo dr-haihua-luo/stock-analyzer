@@ -81,6 +81,16 @@ export interface SignalOutput {
   sector_narrative?: string | null;
   stock_narrative?: string | null;
   news_sentiment_narrative?: string | null;
+  // Additional market LLM fields
+  market_sentiment?: string | null;
+  market_rate_implications?: string | null;
+  market_volatility_expectation?: string | null;
+  market_outlook?: string | null;
+  // Additional sector LLM fields
+  sector_rotation_momentum?: string | null;
+  sector_economic_implications?: string | null;
+  sector_momentum_assessment?: string | null;
+  sector_outlook?: string | null;
 }
 
 export interface ConfidenceBreakdown {
