@@ -9,8 +9,10 @@ function parseNarrative(text: string): Record<string, string> {
   const labels = ["NEWS", "SENTIMENT", "OUTLOOK"];
   const result: Record<string, string> = {};
   labels.forEach((label, i) => {
+    const nextLabels = labels.slice(i + 1).join(":");
+    // Match content after label until next label or end of string
     const pattern = new RegExp(
-      `${label}:\\s*(.+?)(?=${labels.slice(i + 1).join(":|")}:|$)`,
+      `${label}:\\s*(.+?)(?=${nextLabels}:|$)`,
       "s"
     );
     const match = text.match(pattern);
@@ -70,7 +72,8 @@ export default function NewsSentimentPanel({
         <p className="text-gray-500 text-sm text-center py-6">
           News & sentiment analysis unavailable for {ticker}.
         </p>
-      ) : (
+      ) : sections["NEWS"] || sections["SENTIMENT"] || sections["OUTLOOK"] ? (
+        // Has labeled format - render the 3 sections
         <div className="space-y-3">
           {["NEWS", "SENTIMENT", "OUTLOOK"].map((label) => {
             const text = sections[label];
@@ -84,7 +87,7 @@ export default function NewsSentimentPanel({
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-base">{meta.icon}</span>
                   <span className="text-xs font-semibold text-gray-400
-                                   uppercase tracking-wider">
+                                 uppercase tracking-wider">
                     {label}
                   </span>
                 </div>
@@ -94,6 +97,13 @@ export default function NewsSentimentPanel({
               </div>
             );
           })}
+        </div>
+      ) : (
+        // Raw LLM response - render as plain text
+        <div className="rounded-lg border border-blue-700 bg-blue-900/20 px-4 py-3">
+          <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">
+            {narrative}
+          </p>
         </div>
       )}
 

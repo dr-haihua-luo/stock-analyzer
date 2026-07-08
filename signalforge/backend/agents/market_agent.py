@@ -102,7 +102,7 @@ class MarketAgent:
 
                 Format your response as JSON with keys: sentiment, rate_implications, volatility_expectation, outlook
                 """
-
+                logger.info("Calling LLM for market analysis ...")
                 llm_response = await llm_client.generate_structured_completion(prompt)
 
                 # Handle empty string gracefully - don't cache, use fallback

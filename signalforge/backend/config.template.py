@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "your-api-key")
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     LLM_MODEL: str = "your-openrouter-model"
+    PRIMARY_MODEL: str = "google/gemma-4-26b-a4b-it:free"
+    FALLBACK_MODEL: str = "meta-llama/llama-3.3-70b-instruct:free"
+
+
 
     # Alpaca API
     APCA_API_KEY_ID: str = os.getenv("APCA_API_KEY_ID", "your-Alpaca-key")

@@ -115,7 +115,7 @@ class SectorAgent:
 
                 Format your response as JSON with keys: rotation_momentum, economic_implications, momentum_assessment, outlook
                 """
-
+                logger.info("Calling LLM for sector analysis ...")
                 llm_response = await llm_client.generate_structured_completion(prompt)
 
                 # Handle empty string gracefully - don't cache, use fallback

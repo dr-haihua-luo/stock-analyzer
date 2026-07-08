@@ -121,9 +121,9 @@ async def analyze_ticker(
         stock_analysis = analysis_result.get("stock", {})
 
         # Extract narratives from reasoning list (authoritative source)
-        signal_output["market_narrative"] = market_analysis.get("outlook") or _extract_narrative(state.get("reasoning"), "market")
-        signal_output["sector_narrative"] = sector_analysis.get("outlook") or _extract_narrative(state.get("reasoning"), "sector")
-        signal_output["stock_narrative"] = stock_analysis.get("stock_analysis") or _extract_narrative(state.get("reasoning"), "stock")
+        signal_output["market_narrative"] = market_analysis.get("outlook") or _extract_narrative(final_state.get("reasoning"), "market")
+        signal_output["sector_narrative"] = sector_analysis.get("outlook") or _extract_narrative(final_state.get("reasoning"), "sector")
+        signal_output["stock_narrative"] = stock_analysis.get("stock_analysis") or _extract_narrative(final_state.get("reasoning"), "stock")
 
         # Debug: confirm all three narratives are populated
         logger.info(
@@ -139,8 +139,7 @@ async def analyze_ticker(
         signal_output["market_volatility_expectation"] = market_analysis.get("volatility_expectation")
         signal_output["market_outlook"] = market_analysis.get("outlook")
 
-        # Extract sector LLM fields
-        signal_output["sector_narrative"] = sector_analysis.get("outlook") or signal_output["sector_narrative"]
+        # Extract sector LLM fields (sector_narrative already set above)
         signal_output["sector_rotation_momentum"] = sector_analysis.get("rotation_momentum")
         signal_output["sector_economic_implications"] = sector_analysis.get("economic_implications")
         signal_output["sector_momentum_assessment"] = sector_analysis.get("momentum_assessment")

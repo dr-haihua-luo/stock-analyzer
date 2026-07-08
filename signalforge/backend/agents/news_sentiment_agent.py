@@ -43,13 +43,29 @@ async def news_sentiment_node(state: AnalysisState) -> AnalysisState:
         if narrative is None:
             narrative = await _call_llm(llm_input)
 
-            if narrative:
+            logger.info("Return from LLM call for news and sentiments: %s", narrative)
+            # Handle empty string gracefully - don't cache, use fallback
+            if not narrative:
+                logger.warning(
+                    "news_sentiment_agent: LLM returned empty response for %s",
+                    ticker,
+                )
+                article_count = llm_input.get("article_count", 0)
+                st_label = llm_input.get("st_label")
+                narrative = (
+                    f"NEWS: No recent news coverage ({article_count} articles).\n"
+                    f"SENTIMENT: StockTwits {'shows ' + st_label if st_label else 'unavailable'}.\n"
+                    f"OUTLOOK: Watch for news catalysts."
+                )
+            else:
+                # Store in cache
                 await redis_client.set_llm_narrative(
                     "news_sentiment", llm_input, narrative
                 )
                 logger.debug("news_sentiment_agent: LLM called and cached")
         else:
             logger.info("news_sentiment_agent: narrative served from cache")
+
 
         return {
             **state,
@@ -141,6 +157,7 @@ async def _call_llm(llm_input: dict) -> str:
     else:
         st_text = "StockTwits data unavailable."
 
+    logger.info("Calling LLM for news and sentiment analysis")
     return await llm_client.generate_structured_completion(
         prompt=(
             f"Stock: {ticker}\n\n"
@@ -158,11 +175,11 @@ async def _call_llm(llm_input: dict) -> str:
         system_message=(
             "You are a market intelligence analyst specialising in retail "
             "investor sentiment and news flow. Given recent news headlines "
-            "and social sentiment data for a stock, provide genuine insight "
+            "and social sentiment data for a stock, provide concise insight "
             "into what the market narrative is and whether news and social "
             "sentiment are aligned or diverging. "
-            "Never restate the raw numbers as your analysis. "
+            "Never restate the prompt input as your analysis. "
             "Identify the dominant theme in the news and what it signals."
         ),
-        max_tokens=200,
+        max_tokens=5000,
     )

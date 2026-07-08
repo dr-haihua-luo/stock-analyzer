@@ -28,6 +28,7 @@ interface Props {
  * Render stock narrative with section-aware parsing.
  * The stock narrative uses a 5-label template with TECHNICAL:/SETUP:/FUNDAMENTALS:/ANALYST VIEW:/SENTIMENT:
  * Each section is rendered in its own colored block for readability.
+ * Handles multi-line narratives with the "s" flag for regex.
  */
 function renderStockNarrative(narrative: string | null | undefined) {
   if (!narrative) return (
@@ -37,10 +38,15 @@ function renderStockNarrative(narrative: string | null | undefined) {
   const LABELS = ["TECHNICAL", "SETUP", "FUNDAMENTALS", "ANALYST VIEW", "SENTIMENT"];
   const sections: { label: string; text: string }[] = [];
 
+  // Escape special regex characters in labels (like SPACE in "ANALYST VIEW")
+  const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
   LABELS.forEach((label, i) => {
-    const nextLabels = LABELS.slice(i + 1).join("|");
+    // Build lookahead pattern: match until next label followed by : or end of string
+    const nextLabelsPattern = LABELS.slice(i + 1).map(escapeRegex).join(":\\s*|\\s*");
     const pattern = new RegExp(
-      `${label}:\\s*(.+?)(?=${nextLabels}:|$)`, "s"
+      `${escapeRegex(label)}:\\s*([\\s\\S]+?)(?:${nextLabelsPattern}:|$)`,
+      "i" // case-insensitive, handles variations
     );
     const match = narrative.match(pattern);
     if (match?.[1]?.trim()) {
@@ -70,11 +76,12 @@ function renderStockNarrative(narrative: string | null | undefined) {
   }
 
   // Fallback: render as pre-wrap paragraph if no sections parsed
+  // This ensures even long unstructured narratives display
   return (
-    <p className="text-xs text-gray-400 leading-relaxed
+    <p className="text-xs text-gray-300 leading-relaxed
                   bg-gray-800/50 rounded-lg px-3 py-2
                   border-l-2 border-gray-600 mt-1
-                  whitespace-pre-wrap">
+                  whitespace-pre-wrap break-words">
       {narrative}
     </p>
   );
@@ -210,38 +217,52 @@ export default function ConfidenceBreakdown({
                 // Stock: use section-aware renderer for multi-line narrative
                 renderStockNarrative(area.narrative)
               ) : (
-                // Market and Sector show all LLM fields
-                Object.values(area.llm_fields).some(v => v) ? (
-                  <div className="text-xs text-gray-400 leading-relaxed
-                                 bg-gray-800/50 rounded-lg px-3 py-2
-                                 border-l-2 border-gray-600 mt-1 space-y-1">
-                    {area.llm_fields.sentiment && (
-                      <p><span className="text-gray-500">Sentiment:</span> {area.llm_fields.sentiment}</p>
-                    )}
-                    {area.llm_fields.rate_implications && (
-                      <p><span className="text-gray-500">Rate Implications:</span> {area.llm_fields.rate_implications}</p>
-                    )}
-                    {area.llm_fields.volatility_expectation && (
-                      <p><span className="text-gray-500">Volatility Expectation:</span> {area.llm_fields.volatility_expectation}</p>
-                    )}
-                    {area.llm_fields.outlook && (
-                      <p><span className="text-gray-500">Outlook:</span> {area.llm_fields.outlook}</p>
-                    )}
-                    {area.llm_fields.rotation_momentum && (
-                      <p><span className="text-gray-500">Rotation Momentum:</span> {area.llm_fields.rotation_momentum}</p>
-                    )}
-                    {area.llm_fields.economic_implications && (
-                      <p><span className="text-gray-500">Economic Implications:</span> {area.llm_fields.economic_implications}</p>
-                    )}
-                    {area.llm_fields.momentum_assessment && (
-                      <p><span className="text-gray-500">Momentum Assessment:</span> {area.llm_fields.momentum_assessment}</p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-700 italic mt-1">
-                    No analysis available
-                  </p>
-                )
+                // Market and Sector: show both narrative AND detailed LLM fields
+                <div className="space-y-2">
+                  {/* Detailed LLM fields (market/sector analysis) */}
+                  {Object.values(area.llm_fields).some(v => v) && (
+                    <div className="text-xs text-gray-400 leading-relaxed
+                                   bg-gray-800/50 rounded-lg px-3 py-2
+                                   border-l-2 border-gray-600 mt-1 space-y-1">
+                      {area.llm_fields.sentiment && (
+                        <p><span className="text-gray-500">Sentiment:</span> {area.llm_fields.sentiment}</p>
+                      )}
+                      {area.llm_fields.rate_implications && (
+                        <p><span className="text-gray-500">Rate Implications:</span> {area.llm_fields.rate_implications}</p>
+                      )}
+                      {area.llm_fields.volatility_expectation && (
+                        <p><span className="text-gray-500">Volatility Expectation:</span> {area.llm_fields.volatility_expectation}</p>
+                      )}
+                      {area.llm_fields.outlook && (
+                        <p><span className="text-gray-500">Outlook:</span> {area.llm_fields.outlook}</p>
+                      )}
+                      {area.llm_fields.rotation_momentum && (
+                        <p><span className="text-gray-500">Rotation Momentum:</span> {area.llm_fields.rotation_momentum}</p>
+                      )}
+                      {area.llm_fields.economic_implications && (
+                        <p><span className="text-gray-500">Economic Implications:</span> {area.llm_fields.economic_implications}</p>
+                      )}
+                      {area.llm_fields.momentum_assessment && (
+                        <p><span className="text-gray-500">Momentum Assessment:</span> {area.llm_fields.momentum_assessment}</p>
+                      )}
+                    </div>
+                  )}
+                  {/* Narrative (shown alongside detailed fields if available) */}
+                  {area.narrative && (
+                    <p className="text-xs text-gray-300 leading-relaxed
+                              bg-gray-800/50 rounded-lg px-3 py-2
+                              border-l-2 border-gray-600 mt-1
+                              whitespace-pre-wrap break-words">
+                      {area.narrative}
+                    </p>
+                  )}
+                  {/* No data fallback */}
+                  {!Object.values(area.llm_fields).some(v => v) && !area.narrative && (
+                    <p className="text-xs text-gray-700 italic mt-1">
+                      No analysis available
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           );
