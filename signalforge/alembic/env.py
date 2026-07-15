@@ -64,7 +64,7 @@ def run_migrations_online():
     configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = os.getenv(
         "DATABASE_URL_SYNC",
-        "postgresql://signalforge:signalforge_pass@localhost:5432/signalforge"
+        "postgresql://signalforge:signalforge@localhost:5432/signalforge"
     )
     connectable = engine_from_config(
         configuration,

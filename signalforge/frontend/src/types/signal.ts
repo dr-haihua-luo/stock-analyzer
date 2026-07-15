@@ -75,6 +75,7 @@ export interface SignalOutput {
   confidence: number;
   composite_score: number;
   timestamp: string;
+  price_at_signal?: number | null;
   stocktwits_sentiment?: StockTwitsSentiment | null;
   fundamentals?: FundamentalsDisplay | null;
   market_narrative?: string | null;
@@ -110,4 +111,34 @@ export interface AnalysisRequest {
   ticker: string;
   force_refresh?: boolean;
   skip_tipranks?: boolean;
+}
+
+export interface SignalDataPoint {
+  id: string;
+  date: string;
+  signal: 'BUY' | 'HOLD' | 'SELL';
+  confidence: number;
+  price_at_signal: number | null;
+  composite_score: number | null;
+  current_price: number | null;
+  pct_change: number | null;
+  outcome: 'correct' | 'incorrect' | 'neutral' | 'pending';
+}
+
+export interface PerformanceSummary {
+  buy_signals: number;
+  buy_correct: number;
+  buy_avg_return_pct: number | null;
+  sell_signals: number;
+  sell_correct: number;
+  sell_avg_return_pct: number | null;
+}
+
+export interface PerformanceReport {
+  ticker: string;
+  current_price: number | null;
+  period: string;
+  total_signals: number;
+  summary: PerformanceSummary;
+  signals: SignalDataPoint[];
 }

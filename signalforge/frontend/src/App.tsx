@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAnalysis } from './hooks/useAnalysis';
+import { usePerformance } from './hooks/usePerformance';
 import SignalCard from './components/SignalCard';
 import MarketOverview from './components/MarketOverview';
 import SectorHeatmap from './components/SectorHeatmap';
@@ -7,6 +8,7 @@ import ConfidenceBreakdown from './components/ConfidenceBreakdown';
 import FundamentalPanel from './components/FundamentalPanel';
 import SentimentPanel from './components/SentimentPanel';
 import NewsSentimentPanel from './components/NewsSentimentPanel';
+import PerformanceReportPanel from './components/PerformanceReport';
 
 function App() {
   const [ticker, setTicker] = useState('AAPL');
@@ -16,6 +18,10 @@ function App() {
   const [skipTipranks, setSkipTipranks] = useState(true); // Default: skip TipRanks to preserve rate limit
 
   const { analyzeTicker } = useAnalysis();
+  const {
+    report, loading: reportLoading, error: reportError,
+    visible: reportVisible, fetchReport, closeReport,
+  } = usePerformance();
 
   const handleAnalyze = async () => {
     setLoading(true);
@@ -47,20 +53,32 @@ function App() {
         {/* Search Bar */}
         <div className="mb-6">
           <div className="flex flex-col max-w-xl">
-            <div className="flex">
+            <div className="flex gap-2">
               <input
                 type="text"
                 value={ticker}
                 onChange={(e) => setTicker(e.target.value.toUpperCase())}
                 placeholder="Enter stock ticker (e.g., AAPL, MSFT, GOOGL)"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+
               <button
                 onClick={handleAnalyze}
                 disabled={loading}
-                className="px-6 py-2 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 disabled:opacity-50"
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700
+                           text-white text-sm font-semibold rounded-lg transition-colors"
               >
                 {loading ? 'Analyzing...' : 'Analyze'}
+              </button>
+
+              <button
+                onClick={() => fetchReport(ticker)}
+                disabled={!ticker.trim() || reportLoading}
+                className="px-5 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800
+                           text-white text-sm font-semibold rounded-lg transition-colors
+                           border border-gray-600"
+              >
+                {reportLoading ? 'Loading...' : '📊 Report'}
               </button>
             </div>
             {/* TipRanks Toggle */}
@@ -158,6 +176,16 @@ function App() {
             <pre className="text-xs text-gray-600 break-words whitespace-pre-wrap max-w-full">{JSON.stringify(analysisResult, null, 2)}</pre>
           </div>
         </div>
+      )}
+
+      {/* Performance Report Modal */}
+      {reportVisible && (
+        <PerformanceReportPanel
+          report={report}
+          loading={reportLoading}
+          error={reportError}
+          onClose={closeReport}
+        />
       )}
     </div>
   );

@@ -14,8 +14,12 @@ from backend.signal.models import (
 from backend.agents.graph import analysis_graph
 from backend.data.stocktwits_data import fetch_stocktwits_sentiment
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockLatestTradeRequest
+from alpaca.data.enums import DataFeed
+from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -207,10 +211,15 @@ async def analyze_ticker(
             "news_sentiment_narrative"
         )
 
+        # Attach price_at_signal to signal_output from stock_data in final_state
+        stock_data = final_state.get("stock_data", {})
+        signal_output["price_at_signal"] = stock_data.get("current_price") if stock_data else None
+
         # Save signal to database (background task)
         background_tasks.add_task(
             save_signal_to_db,
-            signal_output
+            signal_output,
+            final_state
         )
 
         # Return response
@@ -228,17 +237,23 @@ async def analyze_ticker(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def save_signal_to_db(signal_output: dict):
+async def save_signal_to_db(signal_output: dict, state: dict = None):
     """Save signal output to database. Creates own session to handle background task safely."""
     try:
         # Create our own session for the background task
         # The passed session may be closed by the time this runs
         async with AsyncSessionLocal() as session:
+            # Extract price from stock_data in state
+            stock_data = state.get("stock_data", {}) if state else {}
+            price_at_signal = stock_data.get("current_price") if stock_data else None
+
             signal = Signal(
                 ticker=signal_output["ticker"],
                 signal=signal_output["signal"],
                 confidence=signal_output["confidence"],
-                timestamp=signal_output["timestamp"]
+                timestamp=signal_output["timestamp"],
+                price_at_signal=price_at_signal,
+                composite_score=signal_output.get("composite_score"),
             )
             session.add(signal)
             await session.commit()
@@ -281,3 +296,102 @@ async def get_signal_history(
     except Exception as e:
         logger.error(f"Error retrieving signal history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _compute_outcome(signal: str, pct_change: Optional[float]) -> Optional[str]:
+    """
+    correct  — price moved in the predicted direction
+    incorrect — price moved against the prediction
+    pending  — no price data available yet
+    """
+    if pct_change is None:
+        return "pending"
+    if signal == "BUY" and pct_change > 0:
+        return "correct"
+    if signal == "SELL" and pct_change < 0:
+        return "correct"
+    if signal == "HOLD":
+        return "neutral"
+    return "incorrect"
+
+
+@router.get("/performance/{ticker}")
+async def get_performance(
+    ticker: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns all signals for a ticker in the past 12 months,
+    each with its historical price, signal type, composite score,
+    and the current price fetched live from Alpaca.
+    """
+    ticker = ticker.upper()
+    cutoff = datetime.utcnow() - timedelta(days=365)
+
+    # Fetch historical signals from PostgreSQL
+    stmt = (
+        select(Signal)
+        .where(
+            Signal.ticker == ticker,
+            Signal.timestamp >= cutoff,
+        )
+        .order_by(Signal.timestamp.asc())
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+
+    # Fetch current price from Alpaca
+    current_price = None
+    try:
+        stock_client = StockHistoricalDataClient(
+            api_key=settings.APCA_API_KEY_ID,
+            secret_key=settings.APCA_API_SECRET_KEY,
+        )
+        trade_req = StockLatestTradeRequest(
+            symbol_or_symbols=ticker,
+            feed=DataFeed.IEX,
+        )
+        trades = stock_client.get_stock_latest_trade(trade_req)
+        current_price = float(trades[ticker].price)
+    except Exception as exc:
+        logger.warning("performance: could not fetch current price: %s", exc)
+
+    # Build response
+    data_points = []
+    for r in rows:
+        price = r.price_at_signal
+        pct_change = None
+        if price and current_price and price > 0:
+            pct_change = round((current_price - price) / price * 100, 2)
+
+        data_points.append({
+            "id": str(r.id),
+            "date": r.timestamp.isoformat(),
+            "signal": r.signal,
+            "confidence": r.confidence,
+            "price_at_signal": price,
+            "composite_score": r.composite_score,
+            "current_price": current_price,
+            "pct_change": pct_change,
+            # outcome: did price move in the direction predicted?
+            "outcome": _compute_outcome(r.signal, pct_change),
+        })
+
+    # Summary stats
+    buys = [d for d in data_points if d["signal"] == "BUY" and d["pct_change"] is not None]
+    sells = [d for d in data_points if d["signal"] == "SELL" and d["pct_change"] is not None]
+
+    return {
+        "ticker": ticker,
+        "current_price": current_price,
+        "period": "12 months",
+        "total_signals": len(data_points),
+        "summary": {
+            "buy_signals": len(buys),
+            "buy_correct": sum(1 for d in buys if d["outcome"] == "correct"),
+            "buy_avg_return_pct": round(sum(d["pct_change"] for d in buys) / len(buys), 2) if buys else None,
+            "sell_signals": len(sells),
+            "sell_correct": sum(1 for d in sells if d["outcome"] == "correct"),
+            "sell_avg_return_pct": round(sum(d["pct_change"] for d in sells) / len(sells), 2) if sells else None,
+        },
+        "signals": data_points,
+    }

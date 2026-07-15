@@ -12,3 +12,5 @@ class Signal(Base):
     signal = Column(String)  # BUY, HOLD, SELL
     confidence = Column(Float)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    price_at_signal = Column(Float, nullable=True)   # stock price when signal created
+    composite_score = Column(Float, nullable=True)    # raw composite score -1.0 to +1.0
