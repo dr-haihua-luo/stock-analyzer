@@ -10,6 +10,7 @@ from backend.data.stock_data import (
     fetch_news_sentiment,
 )
 from backend.data.fundamentals_data import fetch_fundamentals, FundamentalsResult
+from backend.data.earnings_quality_cache import get_earnings_quality
 import logging
 from datetime import datetime
 
@@ -119,6 +120,9 @@ class StockAgent:
             # Use real fundamental score from FinViz/TipRanks, fallback to 0.0
             fund_score = fundamentals.fundamental_score if fundamentals else 0.0
 
+            # 8. Fetch earnings quality from yfinance (informational only)
+            earnings_quality = await get_earnings_quality(ticker)
+
             # Create stock data object (matching StockContext structure)
             stock_data = {
                 "ticker": ticker,
@@ -149,6 +153,7 @@ class StockAgent:
                 "stock_data": stock_data,
                 "analysis": analysis,
                 "fundamentals": fundamentals,
+                "earnings_quality": earnings_quality,
                 "news_articles": news_summary,  # raw news summaries for news_sentiment_agent
                 "timestamp": datetime.utcnow().isoformat(),
                 "reasoning": [f"[stock] {narrative}"],

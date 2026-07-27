@@ -12,8 +12,8 @@ HYSTERESIS = 0.03  # composite must move 0.03 beyond the threshold it is
                      # meaningfully delaying genuine trend changes
 
 # Thresholds for signal classification
-BUY_THRESHOLD = 0.3
-SELL_THRESHOLD = -0.3
+BUY_THRESHOLD = 0.6
+SELL_THRESHOLD = -0.2
 
 # Weights for different analysis components
 WEIGHTS = {

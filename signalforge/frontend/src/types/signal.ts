@@ -60,6 +60,49 @@ export interface TipRanksSnapshot {
   source: string;
 }
 
+export interface QuarterlyDataPoint {
+  period: string;
+  value: number | null;
+}
+
+export interface EarningsSurprise {
+  period: string;
+  eps_estimate: number | null;
+  eps_actual: number | null;
+  surprise_pct: number | null;
+}
+
+export interface EarningsQualityDisplay {
+  ticker: string;
+  revenue_qtrs: QuarterlyDataPoint[];
+  revenue_yoy_pct: number | null;
+  revenue_trend: string | null;
+  gross_margin_pct: number | null;
+  operating_margin_pct: number | null;
+  net_margin_pct: number | null;
+  gross_margin_qtrs: QuarterlyDataPoint[];
+  operating_margin_qtrs: QuarterlyDataPoint[];
+  margin_trend: string | null;
+  fcf_qtrs: QuarterlyDataPoint[];
+  fcf_margin_pct: number | null;
+  fcf_to_net_income: number | null;
+  fcf_trend: string | null;
+  cash_billions: number | null;
+  total_debt_billions: number | null;
+  net_cash_billions: number | null;
+  current_ratio: number | null;
+  debt_to_equity: number | null;
+  cash_trend: string | null;
+  surprise_history: EarningsSurprise[];
+  avg_surprise_pct: number | null;
+  beat_streak: number | null;
+  next_earnings_date: string | null;
+  guidance_signal: string | null;
+  earnings_quality_score: number | null;
+  quality_components: Record<string, any>;
+  disclaimer: string;
+}
+
 export interface FundamentalsDisplay {
   ticker: string;
   fundamental_score: number;
@@ -78,6 +121,7 @@ export interface SignalOutput {
   price_at_signal?: number | null;
   stocktwits_sentiment?: StockTwitsSentiment | null;
   fundamentals?: FundamentalsDisplay | null;
+  earnings_quality?: EarningsQualityDisplay | null;
   market_narrative?: string | null;
   sector_narrative?: string | null;
   stock_narrative?: string | null;

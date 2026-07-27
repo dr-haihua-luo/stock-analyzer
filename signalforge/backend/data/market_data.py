@@ -207,13 +207,13 @@ class MarketData:
             logger.info(f"13-week treasury API response status: {two_year_response.status_code}")
 
             if two_year_response.status_code != 200:
-                logger.error(f"13-week treasury API returned non-200 status: {two_year_response.status_code}. Response: {two_year_response.text[:200]}")
+                logger.error(f"13-week treasury API returned non-200 status: {two_year_response.status_code}. Response: {len(two_year_response.text)}")
                 raise ValueError(f"Yahoo Finance API returned status {two_year_response.status_code}")
 
             two_year_response.raise_for_status()
             two_year_json = two_year_response.json()
 
-            logger.info(f"13-week treasury data received: {len(two_year_json.get('chart', {}).get('result', []))} {two_year_response.text}")
+            logger.info(f"13-week treasury data received: {len(two_year_json.get('chart', {}).get('result', []))} {len(two_year_response.text)}")
 
             if not two_year_json['chart']['result']:
                 raise ValueError("No 13-week treasury data retrieved")
@@ -290,3 +290,305 @@ class MarketData:
         except Exception as e:
             logger.error(f"Error fetching market overview: {e}")
             raise
+
+
+# --- Module-level functions for new data sources (standalone, cached in Redis) ---
+
+# Yahoo Finance API configuration (same pattern as existing VIX/yield curve code)
+_YF_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
+_YF_SESSION = requests.Session()
+_YF_RETRIES = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
+_YF_SESSION.mount('https://', HTTPAdapter(max_retries=_YF_RETRIES))
+
+
+def _fetch_yf_history(ticker: str, period: str = "1y") -> dict:
+    """Fetch Yahoo Finance chart data using direct API call (avoids yfinance JSON issues)."""
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+    params = {"range": period, "interval": "1d"}
+
+    try:
+        logger.info("calling yahoo to get history data: %s", url)
+        response = _YF_SESSION.get(url, params=params, headers=_YF_HEADERS)
+        if response.status_code != 200:
+            return {}
+        data_json = response.json()
+        if not data_json.get('chart', {}).get('result'):
+            return {}
+        result = data_json['chart']['result'][0]
+        close = result['indicators']['quote'][0]['close']
+        # Filter None values
+        valid_closes = [c for c in close if c is not None]
+        return {"close": valid_closes}
+    except Exception:
+        return {}
+
+
+INDEX_TICKERS = {
+    "SP500":   "^GSPC",
+    "NASDAQ":  "^IXIC",
+    "DOW":     "^DJI",
+    "RUSSELL": "^RUT",
+}
+
+INDEX_CACHE_TTL = 900   # 15 minutes
+
+
+async def fetch_index_data() -> dict:
+    """
+    For each of the 4 major indexes returns:
+      level          — current closing price
+      chg_1d_pct     — 1-day change %
+      chg_5d_pct     — 5-day change %
+      chg_20d_pct    — 20-day change %
+      pct_from_52w_high — distance from 52-week high %
+      above_200ma    — bool, price above 200-day MA
+
+    Redis key: "data:indexes"  TTL: 15 min
+    Returns empty dict on failure — never raises.
+    """
+    cache_key = "data:indexes"
+    cached = await redis_client.get(cache_key)
+    if cached and isinstance(cached, dict):
+        return cached
+
+    result = {}
+   
+    for name, ticker in INDEX_TICKERS.items():
+        try:   
+            logger.info("calling yahoo to get index: %s", ticker)        
+            data = _fetch_yf_history(ticker, period="1y")
+            logger.info("index returned for %s: len of close list is %s", ticker, len(data["close"]))
+            if not data or "close" not in data or len(data["close"]) < 200:
+                continue
+            close = data["close"]
+            current = float(close[-1])
+            # Compute 200-day MA and 52-week high using pandas
+            df_close = pd.Series(close)
+            # ma_200 = df_close.rolling(200).mean().iloc[-1]
+            # high_52w = df_close.rolling(252).max().iloc[-1]
+            ma_200   = df_close.rolling(200, min_periods=150).mean().iloc[-1]
+            high_52w = df_close.rolling(252, min_periods=200).max().iloc[-1]
+
+            # Skip if NaN (insufficient data)
+            if pd.isna(high_52w):
+                high_52w = float(df_close.max())   # best available high
+            if pd.isna(ma_200):
+                ma_200 = float(df_close.mean())    # best available average
+
+            result[name] = {
+                "level":              round(current, 2),
+                "chg_1d_pct":         round((current / float(close[-2]) - 1) * 100, 2)
+                                      if len(close) >= 2 else None,
+                "chg_5d_pct":         round((current / float(close[-6]) - 1) * 100, 2)
+                                      if len(close) >= 6 else None,
+                "chg_20d_pct":        round((current / float(close[-21]) - 1) * 100, 2)
+                                      if len(close) >= 21 else None,
+                "pct_from_52w_high":  round((current / high_52w - 1) * 100, 2),
+                "above_200ma":        current > float(ma_200),
+            }
+        except Exception as exc:
+            logger.warning("index fetch failed for %s: %s", ticker, exc)
+
+    await redis_client.set(cache_key, result, expire=INDEX_CACHE_TTL)
+    return result
+
+
+RATE_TICKERS = {
+    "US3M":  "^IRX",
+    "US10Y": "^TNX",
+    "US30Y": "^TYX",
+}
+
+RATE_CACHE_TTL = 1800   # 30 minutes
+
+
+async def fetch_rate_data() -> dict:
+    """
+    Returns current yield and 1-month change in basis points for:
+      US3M   — 3-month T-bill (short end / risk-free rate proxy)
+      US10Y  — 10-year Treasury
+      US30Y  — 30-year Treasury
+      FED_FUNDS — effective Fed funds rate from FRED if key set
+
+    Yield curve spread (10Y-3M) is already computed by existing
+    fetch_vix_and_fear_greed — do not duplicate it here.
+
+    Redis key: "data:rates"  TTL: 30 min
+    Returns empty dict on failure — never raises.
+    """
+    cache_key = "data:rates"
+    cached = await redis_client.get(cache_key)
+    if cached and isinstance(cached, dict):
+        return cached
+
+    result = {}
+
+    for name, ticker in RATE_TICKERS.items():
+        try:
+            data = _fetch_yf_history(ticker, period="3mo")
+            if not data or "close" not in data:
+                continue
+            close = data["close"]
+            current = float(close[-1])
+            chg_1m = (float(close[-1]) - float(close[-22])) * 100 \
+                     if len(close) >= 22 else None
+            result[name] = {
+                "yield_pct":    round(current, 3),
+                "chg_1m_bps":   round(chg_1m, 1) if chg_1m is not None else None,
+            }
+        except Exception as exc:
+            logger.warning("rate fetch failed for %s: %s", ticker, exc)
+
+    # Fed Funds Rate — monthly FRED series, graceful skip if no key
+    try:
+        if settings.FRED_API_KEY:
+            import fredapi
+            logger.info("Calling FRED for rates data")
+            fred = fredapi.Fred(api_key=settings.FRED_API_KEY)
+            ffr = fred.get_series("FEDFUNDS", limit=2)
+            if not ffr.empty:
+                result["FED_FUNDS"] = {
+                    "yield_pct":  round(float(ffr.iloc[-1]), 3),
+                    "chg_1m_bps": round(
+                        (float(ffr.iloc[-1]) - float(ffr.iloc[-2])) * 100, 1
+                    ) if len(ffr) >= 2 else None,
+                }
+    except Exception as exc:
+        logger.warning("FRED fed funds fetch failed: %s", exc)
+
+    await redis_client.set(cache_key, result, expire=RATE_CACHE_TTL)
+    return result
+
+
+FX_TICKERS = {
+    "DXY":    "DX-Y.NYB",
+    "EURUSD": "EURUSD=X",
+    "USDJPY": "JPY=X",
+    "GBPUSD": "GBPUSD=X",
+    "USDCNY": "CNY=X",
+}
+
+FX_CACHE_TTL = 900   # 15 minutes
+
+
+async def fetch_fx_data() -> dict:
+    """
+    Returns current rate and 1-month change % for DXY and major pairs.
+
+    DXY rising  → USD strengthening → headwind for commodities,
+                  EM equities, multinationals; risk-off signal.
+    DXY falling → USD weakening → tailwind for above; risk-on signal.
+
+    Redis key: "data:fx"  TTL: 15 min
+    Returns empty dict on failure — never raises.
+    """
+    cache_key = "data:fx"
+    cached = await redis_client.get(cache_key)
+    if cached and isinstance(cached, dict):
+        return cached
+
+    result = {}
+    for name, ticker in FX_TICKERS.items():
+        try:
+            data = _fetch_yf_history(ticker, period="3mo")
+            if not data or "close" not in data:
+                continue
+            close = data["close"]
+            current = float(close[-1])
+            chg_1m = (current / float(close[-22]) - 1) * 100 \
+                     if len(close) >= 22 else None
+            result[name] = {
+                "rate":       round(current, 4),
+                "chg_1m_pct": round(chg_1m, 2) if chg_1m is not None else None,
+            }
+        except Exception as exc:
+            logger.warning("fx fetch failed for %s: %s", ticker, exc)
+
+    await redis_client.set(cache_key, result, expire=FX_CACHE_TTL)
+    return result
+
+
+INFLATION_CACHE_TTL = 3600   # 1 hour — daily FRED series
+
+
+async def fetch_inflation_expectations() -> dict:
+    """
+    Fetches FORWARD-LOOKING inflation data only.
+    Deliberately excludes CPI and PCE — both are monthly and lag
+    by 3-6 weeks, making them stale signals for daily analysis.
+
+    Sources (most recent to least recent):
+    1. 10Y Breakeven Inflation Rate (T10YIE) — FRED, daily.
+       Derived from 10Y nominal minus 10Y TIPS yield.
+       Represents what the bond market expects inflation to be
+       over the next 10 years. Most timely inflation signal available.
+    2. 5Y Breakeven Inflation Rate (T5YIE) — FRED, daily.
+       Shorter-horizon complement to the 10Y.
+    3. TIP ETF momentum — yfinance fallback if no FRED key.
+       TIPS price rises when inflation expectations rise.
+
+    Returns empty dict on failure — never raises.
+    """
+    cache_key = "data:inflation_expectations"
+    cached = await redis_client.get(cache_key)
+    if cached and isinstance(cached, dict):
+        return cached
+
+    result = {
+        "breakeven_10y":        None,
+        "breakeven_5y":         None,
+        "breakeven_10y_chg_1m": None,
+        "breakeven_trend":      None,
+        "source":               "unavailable",
+    }
+
+    # Primary: FRED breakeven rates (daily, forward-looking)
+    try:
+        if settings.FRED_API_KEY:
+            import fredapi
+            fred = fredapi.Fred(api_key=settings.FRED_API_KEY)
+            logger.info("Calling FRED for inflation data")
+            bei_10 = fred.get_series("T10YIE", limit=30)
+            bei_5 = fred.get_series("T5YIE", limit=30)
+
+            if not bei_10.empty:
+                current_10y = float(bei_10.iloc[-1])
+                result["breakeven_10y"] = round(current_10y, 3)
+                if len(bei_10) >= 22:
+                    chg = (current_10y - float(bei_10.iloc[-22])) * 100
+                    result["breakeven_10y_chg_1m"] = round(chg, 1)
+                    result["breakeven_trend"] = (
+                        "rising"  if chg >  10 else
+                        "falling" if chg < -10 else
+                        "stable"
+                    )
+
+            if not bei_5.empty:
+                result["breakeven_5y"] = round(float(bei_5.iloc[-1]), 3)
+
+            result["source"] = "fred"
+            await redis_client.set(cache_key, result, expire=INFLATION_CACHE_TTL)
+            return result
+
+    except Exception as exc:
+        logger.warning("FRED breakeven fetch failed: %s", exc)
+
+    # Fallback: TIP ETF 1-month momentum as inflation expectation proxy
+    try:
+        tip = _fetch_yf_history("TIP", period="3mo")
+        if tip and "close" in tip and len(tip["close"]) >= 22:
+            close = tip["close"]
+            chg_pct = (float(close[-1]) / float(close[-22]) - 1) * 100
+            result["breakeven_trend"] = (
+                "rising"  if chg_pct >  1.0 else
+                "falling" if chg_pct < -1.0 else
+                "stable"
+            )
+            result["source"] = "tip_proxy"
+    except Exception as exc:
+        logger.warning("TIP ETF fallback failed: %s", exc)
+
+    await redis_client.set(cache_key, result, expire=INFLATION_CACHE_TTL)
+    return result

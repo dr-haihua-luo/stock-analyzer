@@ -29,17 +29,17 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal }) => {
 
   const getScoreDescription = (composite: number) => {
     if (composite >= 0.3) {
-      return '> 0.3 = BUY';
+      return '> 0.6 = BUY';
     } else if (composite <= -0.3) {
-      return '< -0.3 = SELL';
+      return '< -0.2 = SELL';
     } else {
-      return '-0.3 to 0.3 = HOLD';
+      return '-0.2 to 0.6 = HOLD';
     }
   };
 
   const getCompositeColor = (composite: number) => {
-    if (composite >= 0.3) return 'text-green-600';
-    if (composite <= -0.3) return 'text-red-600';
+    if (composite >= 0.6) return 'text-green-600';
+    if (composite <= -0.2) return 'text-red-600';
     return 'text-yellow-600';
   };
 

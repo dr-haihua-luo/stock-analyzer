@@ -1,6 +1,67 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
+
+
+class QuarterlyDataPoint(BaseModel):
+    period: str
+    value: Optional[float] = None
+
+
+class EarningsSurpriseModel(BaseModel):
+    period: str
+    eps_estimate: Optional[float] = None
+    eps_actual: Optional[float] = None
+    surprise_pct: Optional[float] = None
+
+
+class EarningsQualityDisplay(BaseModel):
+    ticker: str
+
+    # Revenue
+    revenue_qtrs: List[QuarterlyDataPoint] = []
+    revenue_yoy_pct: Optional[float] = None
+    revenue_trend: Optional[str] = None
+
+    # Margins
+    gross_margin_pct: Optional[float] = None
+    operating_margin_pct: Optional[float] = None
+    net_margin_pct: Optional[float] = None
+    gross_margin_qtrs: List[QuarterlyDataPoint] = []
+    operating_margin_qtrs: List[QuarterlyDataPoint] = []
+    margin_trend: Optional[str] = None
+
+    # FCF
+    fcf_qtrs: List[QuarterlyDataPoint] = []
+    fcf_margin_pct: Optional[float] = None
+    fcf_to_net_income: Optional[float] = None
+    fcf_trend: Optional[str] = None
+
+    # Balance sheet
+    cash_billions: Optional[float] = None
+    total_debt_billions: Optional[float] = None
+    net_cash_billions: Optional[float] = None
+    current_ratio: Optional[float] = None
+    debt_to_equity: Optional[float] = None
+    cash_trend: Optional[str] = None
+
+    # Earnings surprises
+    surprise_history: List[EarningsSurpriseModel] = []
+    avg_surprise_pct: Optional[float] = None
+    beat_streak: Optional[int] = None
+    next_earnings_date: Optional[str] = None
+
+    # Guidance proxy
+    guidance_signal: Optional[str] = None
+
+    # Score
+    earnings_quality_score: Optional[float] = None
+    quality_components: dict = {}
+
+    disclaimer: str = (
+        "Earnings quality is informational only. "
+        "It does not affect the BUY/HOLD/SELL signal score."
+    )
 
 
 class StockTwitsSentiment(BaseModel):
@@ -90,6 +151,7 @@ class SignalOutput(BaseModel):
     timestamp: datetime = Field(description="Analysis timestamp")
     stocktwits_sentiment: Optional[StockTwitsSentiment] = None
     fundamentals: Optional[FundamentalsDisplay] = None
+    earnings_quality: Optional[EarningsQualityDisplay] = None
     market_narrative: Optional[str] = None
     sector_narrative: Optional[str] = None
     stock_narrative: Optional[str] = None

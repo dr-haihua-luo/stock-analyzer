@@ -6,6 +6,7 @@ import MarketOverview from './components/MarketOverview';
 import SectorHeatmap from './components/SectorHeatmap';
 import ConfidenceBreakdown from './components/ConfidenceBreakdown';
 import FundamentalPanel from './components/FundamentalPanel';
+import EarningsQualityPanel from './components/EarningsQualityPanel';
 import SentimentPanel from './components/SentimentPanel';
 import NewsSentimentPanel from './components/NewsSentimentPanel';
 import PerformanceReportPanel from './components/PerformanceReport';
@@ -129,6 +130,13 @@ function App() {
             {/* Fundamental Analysis Panel */}
             <FundamentalPanel
               fundamentals={analysisResult.signal?.fundamentals}
+              ticker={ticker}
+              loading={loading}
+            />
+
+            {/* Earnings Quality Panel - Informational only, not used in signal */}
+            <EarningsQualityPanel
+              data={analysisResult.signal?.earnings_quality}
               ticker={ticker}
               loading={loading}
             />

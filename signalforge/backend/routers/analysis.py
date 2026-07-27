@@ -10,6 +10,9 @@ from backend.signal.models import (
     FundamentalsDisplay,
     FinvizSnapshot,
     TipRanksSnapshot,
+    EarningsQualityDisplay,
+    QuarterlyDataPoint,
+    EarningsSurpriseModel,
 )
 from backend.agents.graph import analysis_graph
 from backend.data.stocktwits_data import fetch_stocktwits_sentiment
@@ -88,6 +91,7 @@ async def analyze_ticker(
             "sector_data": None,
             "stock_data": None,
             "fundamentals": None,
+            "earnings_quality": None,
             "news_articles": None,
             "stocktwits_raw": sentiment_raw,
             "news_sentiment_narrative": None,
@@ -201,6 +205,46 @@ async def analyze_ticker(
                 score_components=raw_fund.score_components,
                 finviz=fv_snap,
                 tipranks=tr_snap,
+            ).model_dump()
+
+        # Build EarningsQualityDisplay from state
+        raw_eq = final_state.get("earnings_quality")
+        if raw_eq:
+            from dataclasses import asdict
+            d  = asdict(raw_eq)
+            signal_output["earnings_quality"] = EarningsQualityDisplay(
+                ticker=d["ticker"],
+                revenue_qtrs=[QuarterlyDataPoint(**p)
+                              for p in d.get("revenue_qtrs", [])],
+                revenue_yoy_pct=d.get("revenue_yoy_pct"),
+                revenue_trend=d.get("revenue_trend"),
+                gross_margin_pct=d.get("gross_margin_pct"),
+                operating_margin_pct=d.get("operating_margin_pct"),
+                net_margin_pct=d.get("net_margin_pct"),
+                gross_margin_qtrs=[QuarterlyDataPoint(**p)
+                                   for p in d.get("gross_margin_qtrs", [])],
+                operating_margin_qtrs=[QuarterlyDataPoint(**p)
+                                       for p in d.get("operating_margin_qtrs", [])],
+                margin_trend=d.get("margin_trend"),
+                fcf_qtrs=[QuarterlyDataPoint(**p)
+                          for p in d.get("fcf_qtrs", [])],
+                fcf_margin_pct=d.get("fcf_margin_pct"),
+                fcf_to_net_income=d.get("fcf_to_net_income"),
+                fcf_trend=d.get("fcf_trend"),
+                cash_billions=d.get("cash_billions"),
+                total_debt_billions=d.get("total_debt_billions"),
+                net_cash_billions=d.get("net_cash_billions"),
+                current_ratio=d.get("current_ratio"),
+                debt_to_equity=d.get("debt_to_equity"),
+                cash_trend=d.get("cash_trend"),
+                surprise_history=[EarningsSurpriseModel(**s)
+                                    for s in d.get("surprise_history", [])],
+                avg_surprise_pct=d.get("avg_surprise_pct"),
+                beat_streak=d.get("beat_streak"),
+                next_earnings_date=d.get("next_earnings_date"),
+                guidance_signal=d.get("guidance_signal"),
+                earnings_quality_score=d.get("earnings_quality_score"),
+                quality_components=d.get("quality_components", {}),
             ).model_dump()
 
         # Attach StockTwits sentiment to response (already fetched before pipeline)

@@ -173,6 +173,7 @@ async def stock_analysis_node(state: AnalysisState) -> AnalysisState:
         stock_data = stock_result.get("stock_data")
         analysis = stock_result.get("analysis")
         fundamentals = stock_result.get("fundamentals")
+        earnings_quality = stock_result.get("earnings_quality")
         stock_reasoning = stock_result.get("reasoning", [])
 
         # Ensure extracted data is in expected format
@@ -198,8 +199,9 @@ async def stock_analysis_node(state: AnalysisState) -> AnalysisState:
             # Still update analysis_result with empty stock analysis to avoid KeyError later
             state["analysis_result"] = {**current_analysis_result, "stock": {}}
 
-        # Update fundamentals in state (dataclass, not dict)
+        # Update fundamentals and earnings_quality in state (dataclass, not dict)
         state["fundamentals"] = fundamentals
+        state["earnings_quality"] = earnings_quality
 
         # Pass through news_articles for news_sentiment_node
         stock_news_articles = stock_result.get("news_articles")
