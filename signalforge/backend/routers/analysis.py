@@ -12,7 +12,6 @@ from backend.signal.models import (
     TipRanksSnapshot,
     EarningsQualityDisplay,
     QuarterlyDataPoint,
-    EarningsSurpriseModel,
 )
 from backend.agents.graph import analysis_graph
 from backend.data.stocktwits_data import fetch_stocktwits_sentiment
@@ -129,7 +128,7 @@ async def analyze_ticker(
         stock_analysis = analysis_result.get("stock", {})
 
         # Extract narratives from reasoning list (authoritative source)
-        signal_output["market_narrative"] = market_analysis.get("outlook") or _extract_narrative(final_state.get("reasoning"), "market")
+        signal_output["market_narrative"] = market_analysis.get("OUTLOOK") or _extract_narrative(final_state.get("reasoning"), "market")
         signal_output["sector_narrative"] = sector_analysis.get("outlook") or _extract_narrative(final_state.get("reasoning"), "sector")
         signal_output["stock_narrative"] = stock_analysis.get("stock_analysis") or _extract_narrative(final_state.get("reasoning"), "stock")
 
@@ -142,10 +141,9 @@ async def analyze_ticker(
         )
 
         # Extract market LLM fields
-        signal_output["market_sentiment"] = market_analysis.get("sentiment")
-        signal_output["market_rate_implications"] = market_analysis.get("rate_implications")
-        signal_output["market_volatility_expectation"] = market_analysis.get("volatility_expectation")
-        signal_output["market_outlook"] = market_analysis.get("outlook")
+        signal_output["market_macro"] = market_analysis.get("MACRO")
+        signal_output["market_rates_fx"] = market_analysis.get("RATES & FX")
+        signal_output["market_regime"] = market_analysis.get("REGIME")
 
         # Extract sector LLM fields (sector_narrative already set above)
         signal_output["sector_rotation_momentum"] = sector_analysis.get("rotation_momentum")
@@ -237,12 +235,6 @@ async def analyze_ticker(
                 current_ratio=d.get("current_ratio"),
                 debt_to_equity=d.get("debt_to_equity"),
                 cash_trend=d.get("cash_trend"),
-                surprise_history=[EarningsSurpriseModel(**s)
-                                    for s in d.get("surprise_history", [])],
-                avg_surprise_pct=d.get("avg_surprise_pct"),
-                beat_streak=d.get("beat_streak"),
-                next_earnings_date=d.get("next_earnings_date"),
-                guidance_signal=d.get("guidance_signal"),
                 earnings_quality_score=d.get("earnings_quality_score"),
                 quality_components=d.get("quality_components", {}),
             ).model_dump()

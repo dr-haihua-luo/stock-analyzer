@@ -4,6 +4,7 @@ from backend.agents.llm_client import llm_client
 from backend.cache.redis_client import redis_client
 import logging
 import json
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,17 @@ logger = logging.getLogger(__name__)
 class SectorAgent:
     def __init__(self):
         self.sector_data = SectorData()
+
+    def _strip_markdown_fence(self, text: str) -> str:
+        if not text:
+            return text
+        text = text.strip()
+        
+        match = re.match(r"^```(?:json)?\s*\n?(.*?)\n?```$", text, re.DOTALL | re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+
+        return text
 
     async def analyze(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze sector rotation and return insights."""
@@ -79,6 +91,9 @@ class SectorAgent:
             if llm_response is None:
                 # Cache miss — call the LLM
                 prompt = f"""
+                You are a sector rotation analyst. Respond with raw JSON only — no markdown code fences, 
+                no ```json wrapper, no explanatory text before or after.
+                
                 Analyze the following sector performance data and provide insights on sector rotation:
 
                 Sector Performance Summary:
@@ -139,8 +154,11 @@ class SectorAgent:
 
             # Parse LLM response
             try:
-                analysis = json.loads(llm_response)
-            except json.JSONDecodeError:
+                cleaned_response = self._strip_markdown_fence(llm_response)
+                logger.info("LLM response for sector analysis: %s", cleaned_response)
+                analysis = json.loads(cleaned_response)
+            except json.JSONDecodeError as ex:
+                logger.error("error LLM response for sector analysis: %s", ex)
                 # Fallback analysis
                 analysis = {
                     "rotation_momentum": "mixed",

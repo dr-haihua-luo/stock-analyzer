@@ -11,6 +11,7 @@ from backend.data.stock_data import (
 )
 from backend.data.fundamentals_data import fetch_fundamentals, FundamentalsResult
 from backend.data.earnings_quality_cache import get_earnings_quality
+from backend.cache.redis_client import redis_client
 import logging
 from datetime import datetime
 
@@ -75,47 +76,80 @@ class StockAgent:
             fund_score_str = f"{fundamentals.fundamental_score:+.3f}" if fundamentals else "N/A"
 
             # 8. LLM narrative for stock conditions
-            prompt = f"""
-            You are a concise equity analyst. Respond using ONLY this exact template 
-            — no intro, no outro, no repetition of input data:
+            # Build canonical input dict for cache key (must capture every
+            # value that influences the prompt output)
+            llm_input = {
+                "prompt_version": "stock_v1",
+                "ticker": ticker,
+                "current_price": round(current_price, 2),
+                "pct_from_52w_high": w52["pct_from_52w_high"],
+                "rsi_14": technicals["rsi_14"],
+                "macd_signal": technicals["macd_signal"],
+                "bb_position": technicals["bb_position"],
+                "volume_trend": technicals["volume_trend"],
+                "pe_ratio": round(fv.pe_ratio, 1) if fv and fv.pe_ratio else None,
+                "forward_pe": round(fv.forward_pe, 1) if fv and fv.forward_pe else None,
+                "profit_margin_pct": round(fv.profit_margin_pct, 1) if fv and fv.profit_margin_pct else None,
+                "roe_pct": round(fv.roe_pct, 1) if fv and fv.roe_pct else None,
+                "eps_next_5y_pct": round(fv.eps_next_5y_pct, 1) if fv and fv.eps_next_5y_pct else None,
+                "net_insider_sentiment": round(fv.net_insider_sentiment, 4) if fv and fv.net_insider_sentiment is not None else None,
+                "insider_buys_90d": fv.insider_buys_90d if fv and fv.insider_buys_90d else None,
+                "insider_sells_90d": fv.insider_sells_90d if fv and fv.insider_sells_90d else None,
+                "news_sentiment": round(news_sentiment, 4),
+                "fundamental_score": round(fundamentals.fundamental_score, 3) if fundamentals else None,
+            }
 
-            TECHNICAL: <one sentence on RSI and MACD momentum direction>
-            SETUP: <one sentence on Bollinger Band position and volume trend>
-            FUNDAMENTALS: <one sentence on valuation and profitability>
-            ANALYST VIEW: <one sentence on Wall Street consensus and price target>
-            SENTIMENT: <one sentence on insider activity and news tone>
+            # Try LLM cache first
+            narrative = await redis_client.get_llm_narrative("stock", llm_input)
 
-            Ticker: {ticker}  Price: ${current_price:.2f}  
-            52w-high: {w52['pct_from_52w_high']:+.1f}%\n
-            RSI(14): {technicals['rsi_14']:.1f}  
-            MACD: {technicals['macd_signal']}  
-            BB: {technicals['bb_position']}  
-            Volume: {technicals['volume_trend']}\n
-            P/E: {pe_str}  Fwd P/E: {fwd_pe_str}  
-            Profit margin: {profit_margin}  ROE: {roe_str}  
-            EPS growth 5Y: {eps_growth}\n
-            Insider 90d: {insider_str}  
-            News sentiment: {news_sentiment:+.2f}  
-            Fundamental score: {fund_score_str}
-            """
-            logger.info(f"Stock agent prompt {ticker}: {prompt}")
+            if narrative is None:
+                # Cache miss — build prompt and call the LLM
+                prompt = f"""
+                You are a concise equity analyst. Respond using ONLY this exact template
+                — no intro, no outro, no repetition of input data:
 
-            llm_response = await llm_client.generate_structured_completion(
-                prompt=prompt,
-                max_tokens=500
-            )
+                TECHNICAL: <one sentence on RSI and MACD momentum direction>
+                SETUP: <one sentence on Bollinger Band position and volume trend>
+                FUNDAMENTALS: <one sentence on valuation and profitability>
+                ANALYST VIEW: <one sentence on Wall Street consensus and price target>
+                SENTIMENT: <one sentence on insider activity and news tone>
 
-            # Handle case where LLM returns None or empty response
-            if not llm_response:
-                logger.warning(f"LLM returned empty response for {ticker} — using fallback narrative")
-                narrative = (
-                    f"RSI {technicals['rsi_14']:.1f}, "
-                    f"MACD {technicals['macd_signal']['trend'] if isinstance(technicals['macd_signal'], dict) else technicals['macd_signal']}, "
-                    f"fundamental score {fund_score_str}."
+                Ticker: {ticker}  Price: ${current_price:.2f}
+                52w-high: {w52['pct_from_52w_high']:+.1f}%\n
+                RSI(14): {technicals['rsi_14']:.1f}
+                MACD: {technicals['macd_signal']}
+                BB: {technicals['bb_position']}
+                Volume: {technicals['volume_trend']}\n
+                P/E: {pe_str}  Fwd P/E: {fwd_pe_str}
+                Profit margin: {profit_margin}  ROE: {roe_str}
+                EPS growth 5Y: {eps_growth}\n
+                Insider 90d: {insider_str}
+                News sentiment: {news_sentiment:+.2f}
+                Fundamental score: {fund_score_str}
+                """
+                logger.info(f"Stock agent prompt {ticker}: {prompt}")
+
+                llm_response = await llm_client.generate_structured_completion(
+                    prompt=prompt,
+                    max_tokens=500
                 )
+
+                # Handle case where LLM returns None or empty response
+                if not llm_response:
+                    logger.warning(f"LLM returned empty response for {ticker} — using fallback narrative")
+                    narrative = (
+                        f"RSI {technicals['rsi_14']:.1f}, "
+                        f"MACD {technicals['macd_signal']['trend'] if isinstance(technicals['macd_signal'], dict) else technicals['macd_signal']}, "
+                        f"fundamental score {fund_score_str}."
+                    )
+                else:
+                    narrative = llm_response.strip()
+                    # Store in cache (2 hours TTL)
+                    await redis_client.set_llm_narrative("stock", llm_input, narrative, ttl=7200)
+                    logger.debug("stock_agent: LLM called and narrative cached")
+                logger.info(f"LLM response = {narrative}")
             else:
-                narrative = llm_response.strip()
-            logger.info(f"LLM response = {narrative}")
+                logger.debug("stock_agent: LLM narrative served from cache")
 
             # Use real fundamental score from FinViz/TipRanks, fallback to 0.0
             fund_score = fundamentals.fundamental_score if fundamentals else 0.0

@@ -13,10 +13,9 @@ interface Props {
   sector_narrative?: string | null;
   stock_narrative?: string | null;
   // Additional market LLM fields
-  market_sentiment?: string | null;
-  market_rate_implications?: string | null;
-  market_volatility_expectation?: string | null;
-  market_outlook?: string | null;
+  market_macro?: string | null;
+  market_rates_fx?: string | null;
+  market_regime?: string | null;
   // Additional sector LLM fields
   sector_rotation_momentum?: string | null;
   sector_economic_implications?: string | null;
@@ -93,10 +92,9 @@ export default function ConfidenceBreakdown({
   sector_narrative,
   stock_narrative,
   // Market LLM fields
-  market_sentiment,
-  market_rate_implications,
-  market_volatility_expectation,
-  market_outlook,
+  market_macro,
+  market_rates_fx,
+  market_regime,
   // Sector LLM fields
   sector_rotation_momentum,
   sector_economic_implications,
@@ -133,10 +131,9 @@ export default function ConfidenceBreakdown({
       subtext:     null,
       // Additional market LLM fields
       llm_fields: {
-        sentiment: market_sentiment,
-        rate_implications: market_rate_implications,
-        volatility_expectation: market_volatility_expectation,
-        outlook: market_outlook,
+        macro: market_macro,
+        rates_fx: market_rates_fx,
+        regime: market_regime,
       },
     },
     {
@@ -224,17 +221,14 @@ export default function ConfidenceBreakdown({
                     <div className="text-xs text-gray-400 leading-relaxed
                                    bg-gray-800/50 rounded-lg px-3 py-2
                                    border-l-2 border-gray-600 mt-1 space-y-1">
-                      {area.llm_fields.sentiment && (
-                        <p><span className="text-gray-500">Sentiment:</span> {area.llm_fields.sentiment}</p>
+                      {area.llm_fields.macro && (
+                        <p><span className="text-gray-500">MACRO:</span> {area.llm_fields.macro}</p>
                       )}
-                      {area.llm_fields.rate_implications && (
-                        <p><span className="text-gray-500">Rate Implications:</span> {area.llm_fields.rate_implications}</p>
+                      {area.llm_fields.rates_fx && (
+                        <p><span className="text-gray-500">RATES & FX:</span> {area.llm_fields.rates_fx}</p>
                       )}
-                      {area.llm_fields.volatility_expectation && (
-                        <p><span className="text-gray-500">Volatility Expectation:</span> {area.llm_fields.volatility_expectation}</p>
-                      )}
-                      {area.llm_fields.outlook && (
-                        <p><span className="text-gray-500">Outlook:</span> {area.llm_fields.outlook}</p>
+                      {area.llm_fields.regime && (
+                        <p><span className="text-gray-500">REGIME:</span> {area.llm_fields.regime}</p>
                       )}
                       {area.llm_fields.rotation_momentum && (
                         <p><span className="text-gray-500">Rotation Momentum:</span> {area.llm_fields.rotation_momentum}</p>

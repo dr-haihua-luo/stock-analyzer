@@ -7,7 +7,6 @@ from dataclasses import asdict
 from backend.data.earnings_quality_data import (
     fetch_earnings_quality, EarningsQuality,
     EARNINGS_QUALITY_TTL, QuarterlyPoint,
-    EarningsSurprise,
 )
 from backend.cache.redis_client import redis_client
 
@@ -56,8 +55,7 @@ def _from_dict(data: dict) -> EarningsQuality:
         "fcf_margin_pct", "fcf_to_net_income", "fcf_trend",
         "cash_billions", "total_debt_billions", "net_cash_billions",
         "current_ratio", "debt_to_equity", "cash_trend",
-        "avg_surprise_pct", "beat_streak", "next_earnings_date",
-        "guidance_signal", "earnings_quality_score",
+        "earnings_quality_score",
         "fetched_at", "source", "quality_components",
     ]:
         setattr(eq, f, data.get(f))
@@ -74,8 +72,5 @@ def _from_dict(data: dict) -> EarningsQuality:
     ]
     eq.fcf_qtrs = [
         QuarterlyPoint(**p) for p in (data.get("fcf_qtrs") or [])
-    ]
-    eq.surprise_history = [
-        EarningsSurprise(**s) for s in (data.get("surprise_history") or [])
     ]
     return eq

@@ -65,13 +65,6 @@ export interface QuarterlyDataPoint {
   value: number | null;
 }
 
-export interface EarningsSurprise {
-  period: string;
-  eps_estimate: number | null;
-  eps_actual: number | null;
-  surprise_pct: number | null;
-}
-
 export interface EarningsQualityDisplay {
   ticker: string;
   revenue_qtrs: QuarterlyDataPoint[];
@@ -93,11 +86,6 @@ export interface EarningsQualityDisplay {
   current_ratio: number | null;
   debt_to_equity: number | null;
   cash_trend: string | null;
-  surprise_history: EarningsSurprise[];
-  avg_surprise_pct: number | null;
-  beat_streak: number | null;
-  next_earnings_date: string | null;
-  guidance_signal: string | null;
   earnings_quality_score: number | null;
   quality_components: Record<string, any>;
   disclaimer: string;
@@ -127,10 +115,9 @@ export interface SignalOutput {
   stock_narrative?: string | null;
   news_sentiment_narrative?: string | null;
   // Additional market LLM fields
-  market_sentiment?: string | null;
-  market_rate_implications?: string | null;
-  market_volatility_expectation?: string | null;
-  market_outlook?: string | null;
+  market_macro?: string | null;
+  market_rates_fx?: string | null;
+  market_regime?: string | null;
   // Additional sector LLM fields
   sector_rotation_momentum?: string | null;
   sector_economic_implications?: string | null;

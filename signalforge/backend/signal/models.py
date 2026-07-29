@@ -8,13 +8,6 @@ class QuarterlyDataPoint(BaseModel):
     value: Optional[float] = None
 
 
-class EarningsSurpriseModel(BaseModel):
-    period: str
-    eps_estimate: Optional[float] = None
-    eps_actual: Optional[float] = None
-    surprise_pct: Optional[float] = None
-
-
 class EarningsQualityDisplay(BaseModel):
     ticker: str
 
@@ -44,15 +37,6 @@ class EarningsQualityDisplay(BaseModel):
     current_ratio: Optional[float] = None
     debt_to_equity: Optional[float] = None
     cash_trend: Optional[str] = None
-
-    # Earnings surprises
-    surprise_history: List[EarningsSurpriseModel] = []
-    avg_surprise_pct: Optional[float] = None
-    beat_streak: Optional[int] = None
-    next_earnings_date: Optional[str] = None
-
-    # Guidance proxy
-    guidance_signal: Optional[str] = None
 
     # Score
     earnings_quality_score: Optional[float] = None
@@ -157,10 +141,9 @@ class SignalOutput(BaseModel):
     stock_narrative: Optional[str] = None
     news_sentiment_narrative: Optional[str] = None
     # Additional market LLM response fields
-    market_sentiment: Optional[str] = None
-    market_rate_implications: Optional[str] = None
-    market_volatility_expectation: Optional[str] = None
-    market_outlook: Optional[str] = None
+    market_macro: Optional[str] = None
+    market_rates_fx: Optional[str] = None
+    market_regime: Optional[str] = None
     # Additional sector LLM response fields
     sector_rotation_momentum: Optional[str] = None
     sector_economic_implications: Optional[str] = None

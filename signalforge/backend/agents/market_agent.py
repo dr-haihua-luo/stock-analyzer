@@ -12,6 +12,7 @@ from backend.cache.redis_client import redis_client
 from backend.config import settings
 import logging
 import json
+import re
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,17 @@ logger = logging.getLogger(__name__)
 class MarketAgent:
     def __init__(self):
         self.market_data = MarketData()
+
+    def _strip_markdown_fence(self, text: str) -> str:
+        if not text:
+            return text
+        text = text.strip()
+
+        match = re.match(r"^```(?:json)?\s*\n?(.*?)\n?```$", text, re.DOTALL | re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+
+        return text
 
     async def analyze(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze market conditions and return insights."""
@@ -252,10 +264,11 @@ INFLATION EXPECTATIONS (forward-looking)
 Yield curve {llm_input['yield_curve_spread']:.0f}bps ({llm_input['yield_curve_signal']}) | Regime: {llm_input['macro_regime']} | Score: {llm_input['market_score']:+.4f}
 
 ---
-Reply with exactly 3 lines. Interpret what the data means — do not restate numbers.
+Interpret what the data means — do not restate numbers. Format your response as JSON with the following 4 keys:
 MACRO:
 RATES & FX:
 REGIME:
+OUTLOOK:
 """
                 logger.info("Calling LLM for market analysis ...")
                 llm_response = await llm_client.generate_structured_completion(prompt, system_message="You are a macro market analyst.")
@@ -267,10 +280,10 @@ REGIME:
                         llm_input['vix_value'], llm_input['yield_curve_spread']
                     )
                     llm_response = json.dumps({
-                        "sentiment": "neutral",
-                        "rate_implications": "monitor closely",
-                        "volatility_expectation": "moderate",
-                        "outlook": f"Market regime is {macro_regime} with VIX at {vix_value:.1f}"
+                        "MACRO": "neutral",
+                        "RATES & FX": "monitor closely",
+                        "REGIME": f"Market regime is {macro_regime} with VIX at {vix_value:.1f}",
+                        "OUTLOOK": "neutral"
                     })
                 else:
                     # Store in cache
@@ -280,20 +293,24 @@ REGIME:
                 logger.debug("market_agent: LLM narrative served from cache")
 
             # Parse LLM response (handle potential formatting issues)
+
+            logger.info("LLM response for market analysis: %s", llm_response)
             try:
-                analysis = json.loads(llm_response)
+                cleaned_response = self._strip_markdown_fence(llm_response)
+                analysis = json.loads(cleaned_response)
             except json.JSONDecodeError:
                 # Fallback if LLM doesn't return valid JSON
                 analysis = {
-                    "sentiment": "neutral",
-                    "rate_implications": "monitor closely",
-                    "volatility_expectation": "moderate",
-                    "outlook": "market conditions require careful monitoring"
+                        "MACRO": "neutral",
+                        "RATES & FX": "monitor closely",
+                        "REGIME": f"Market regime is {macro_regime} with VIX at {vix_value:.1f}",
+                        "OUTLOOK": "neutral"
                 }
-
+ 
             # Build LLM narrative for the reasoning field
-            outlook = analysis.get('outlook', '')
+            outlook = analysis.get('OUTLOOK', '')
             narrative = f"[market] {outlook}" if outlook else f"[market] VIX at {vix_value:.1f} ({vix_regime}), regime is {macro_regime}."
+
 
             result = {
                 "market_data": {

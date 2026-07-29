@@ -116,10 +116,9 @@ function App() {
               sector_narrative={analysisResult.signal?.sector_narrative}
               stock_narrative={analysisResult.signal?.stock_narrative}
               // Market LLM fields
-              market_sentiment={analysisResult.signal?.market_sentiment}
-              market_rate_implications={analysisResult.signal?.market_rate_implications}
-              market_volatility_expectation={analysisResult.signal?.market_volatility_expectation}
-              market_outlook={analysisResult.signal?.market_outlook}
+              market_macro={analysisResult.signal?.market_macro}
+              market_rates_fx={analysisResult.signal?.market_rates_fx}
+              market_regime={analysisResult.signal?.market_regime}
               // Sector LLM fields
               sector_rotation_momentum={analysisResult.signal?.sector_rotation_momentum}
               sector_economic_implications={analysisResult.signal?.sector_economic_implications}

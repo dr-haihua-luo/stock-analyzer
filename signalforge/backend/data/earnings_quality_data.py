@@ -6,8 +6,10 @@ session management required. curl_cffi with Chrome impersonation
 is used for all requests consistent with the rest of the project.
 
 Free tier: 250 calls/day — sufficient for personal use.
-This module makes 5 calls per ticker analysis (cached for 4 hours,
-so each ticker only costs 5 calls per 4-hour window).
+This module makes 3 calls per ticker analysis (cached for 4 hours,
+so each ticker only costs 3 calls per 4-hour window).
+Note: earnings-surprises, earning_calendar, and analyst-estimates
+endpoints are NOT free on FMP and have been removed.
 
 Sign up: https://financialmodelingprep.com/developer/docs
 Redis TTL: 4 hours (data changes only at earnings releases).
@@ -39,14 +41,6 @@ class QuarterlyPoint:
 
 
 @dataclass
-class EarningsSurprise:
-    period: str
-    eps_estimate: Optional[float]
-    eps_actual: Optional[float]
-    surprise_pct: Optional[float]
-
-
-@dataclass
 class EarningsQuality:
     ticker: str
     revenue_qtrs: list = field(default_factory=list)
@@ -68,11 +62,6 @@ class EarningsQuality:
     current_ratio: Optional[float] = None
     debt_to_equity: Optional[float] = None
     cash_trend: Optional[str] = None
-    surprise_history: list = field(default_factory=list)
-    avg_surprise_pct: Optional[float] = None
-    beat_streak: Optional[int] = None
-    next_earnings_date: Optional[str] = None
-    guidance_signal: Optional[str] = None
     earnings_quality_score: Optional[float] = None
     quality_components: dict = field(default_factory=dict)
     fetched_at: str = field(
@@ -88,7 +77,7 @@ class EarningsQuality:
 async def fetch_earnings_quality(ticker: str) -> Optional[EarningsQuality]:
     """
     Fetch all earnings quality data from FMP free API.
-    Makes 5 concurrent HTTP calls. Returns None on complete failure.
+    Makes 3 concurrent HTTP calls. Returns None on complete failure.
     Never raises.
     """
     from backend.config import settings
@@ -112,9 +101,6 @@ async def fetch_earnings_quality(ticker: str) -> Optional[EarningsQuality]:
                 income_data,
                 cashflow_data,
                 balance_data,
-                surprise_data,
-                calendar_data,
-                estimates_data,
             ) = await asyncio.gather(
                 _get(session, f"{FMP_BASE}/income-statement?symbol={ticker}",
                      {"period": "quarter", "limit": 5, "apikey": api_key}),
@@ -122,21 +108,12 @@ async def fetch_earnings_quality(ticker: str) -> Optional[EarningsQuality]:
                      {"period": "quarter", "limit": 5, "apikey": api_key}),
                 _get(session, f"{FMP_BASE}/balance-sheet-statement?symbol={ticker}",
                      {"period": "quarter", "limit": 5, "apikey": api_key}),
-                _get(session, f"{FMP_BASE}/earnings-surprises?symbol={ticker}",
-                     {"apikey": api_key}),
-                _get(session, f"{FMP_BASE}/historical/earning_calendar?symbol={ticker}",
-                     {"limit": 5, "apikey": api_key}),
-                _get(session, f"{FMP_BASE}/analyst-estimates?symbol={ticker}",
-                     {"period": "quarter", "limit": 4, "apikey": api_key}),
                 return_exceptions=True,
             )
 
         _parse_income(income_data, eq)
         _parse_cashflow(cashflow_data, income_data, eq)
         _parse_balance_sheet(balance_data, eq)
-        _parse_surprises(surprise_data, eq)
-        _parse_calendar(calendar_data, eq)
-        _parse_estimates(estimates_data, eq)
         _compute_quality_score(eq)
 
         logger.info(
@@ -352,103 +329,6 @@ def _parse_balance_sheet(data: list, eq: EarningsQuality) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Earnings surprises
-# ---------------------------------------------------------------------------
-
-def _parse_surprises(data: list, eq: EarningsQuality) -> None:
-    if not data:
-        return
-    try:
-        surprises = []
-        for item in data[:4]:
-            date = str(item.get("date", ""))[:10]
-            est = item.get("estimatedEarning")
-            act = item.get("actualEarningResult")
-            surp = None
-            if est is not None and act is not None and est != 0:
-                surp = round((act - est) / abs(est) * 100, 2)
-            surprises.append(EarningsSurprise(
-                period=date,
-                eps_estimate=round(float(est), 3) if est is not None else None,
-                eps_actual=round(float(act), 3) if act is not None else None,
-                surprise_pct=surp,
-            ))
-
-        eq.surprise_history = surprises
-
-        valid = [s.surprise_pct for s in surprises if s.surprise_pct is not None]
-        if valid:
-            eq.avg_surprise_pct = round(sum(valid) / len(valid), 2)
-
-        streak = 0
-        for s in surprises:
-            if s.surprise_pct is None:
-                break
-            if s.surprise_pct > 0:
-                streak = streak + 1 if streak >= 0 else 0
-                if streak == 0:
-                    break
-            else:
-                streak = streak - 1 if streak <= 0 else 0
-                if streak == 0:
-                    break
-        eq.beat_streak = streak
-
-    except Exception as exc:
-        logger.debug("surprise parse skip: %s", exc)
-
-
-# ---------------------------------------------------------------------------
-# Next earnings date
-# ---------------------------------------------------------------------------
-
-def _parse_calendar(data: list, eq: EarningsQuality) -> None:
-    if not data:
-        return
-    try:
-        today = datetime.now(timezone.utc).date()
-        for item in data:
-            date_str = str(item.get("date", ""))[:10]
-            try:
-                d = datetime.strptime(date_str, "%Y-%m-%d").date()
-                if d >= today:
-                    eq.next_earnings_date = date_str
-                    break
-            except Exception:
-                continue
-    except Exception as exc:
-        logger.debug("calendar parse skip: %s", exc)
-
-
-# ---------------------------------------------------------------------------
-# Analyst estimates → guidance proxy
-# ---------------------------------------------------------------------------
-
-def _parse_estimates(data: list, eq: EarningsQuality) -> None:
-    if not data or len(data) < 2:
-        eq.guidance_signal = "unavailable"
-        return
-    try:
-        current_eps = data[0].get("estimatedEpsAvg")
-        previous_eps = data[1].get("estimatedEpsAvg")
-
-        if current_eps is None or previous_eps is None or previous_eps == 0:
-            eq.guidance_signal = "unavailable"
-            return
-
-        change_pct = (current_eps - previous_eps) / abs(previous_eps) * 100
-        eq.guidance_signal = (
-            "raised" if change_pct > 2.0 else
-            "cut" if change_pct < -2.0 else
-            "neutral"
-        )
-
-    except Exception as exc:
-        logger.debug("estimates parse skip: %s", exc)
-        eq.guidance_signal = "unavailable"
-
-
-# ---------------------------------------------------------------------------
 # Composite earnings quality score
 # ---------------------------------------------------------------------------
 
@@ -493,20 +373,6 @@ def _compute_quality_score(eq: EarningsQuality) -> None:
     if bs_signals:
         components["balance_sheet"] = round(sum(bs_signals) / len(bs_signals), 4)
         weights["balance_sheet"] = 0.15
-
-    if eq.avg_surprise_pct is not None:
-        s = max(-1.0, min(1.0, eq.avg_surprise_pct / 10))
-        if eq.beat_streak and eq.beat_streak >= 3:
-            s = min(1.0, s + 0.15)
-        elif eq.beat_streak and eq.beat_streak <= -2:
-            s = max(-1.0, s - 0.15)
-        components["earnings_surprise"] = round(s, 4)
-        weights["earnings_surprise"] = 0.15
-
-    guidance_map = {"raised": 0.8, "neutral": 0.0, "cut": -0.8}
-    if eq.guidance_signal in guidance_map:
-        components["guidance"] = guidance_map[eq.guidance_signal]
-        weights["guidance"] = 0.10
 
     if not weights:
         return

@@ -4,14 +4,6 @@ import {
 } from 'recharts';
 
 interface QuarterlyPoint  { period: string; value: number | null }
-interface SurpriseRecord  {
-  period: string; eps_estimate: number | null;
-  eps_actual: number | null; surprise_pct: number | null;
-}
-interface EpsRevision {
-  window: string; up_count: number | null;
-  down_count: number | null; direction: string | null;
-}
 interface EarningsQuality {
   ticker: string;
   revenue_qtrs: QuarterlyPoint[];
@@ -33,11 +25,6 @@ interface EarningsQuality {
   current_ratio: number | null;
   debt_to_equity: number | null;
   cash_trend: string | null;
-  surprise_history: SurpriseRecord[];
-  avg_surprise_pct: number | null;
-  beat_streak: number | null;
-  next_earnings_date: string | null;
-  guidance_signal: string | null;
   earnings_quality_score: number | null;
   quality_components: Record<string, any>;
   disclaimer: string;
@@ -54,14 +41,12 @@ const TREND_BADGE: Record<string, string> = {
   improving:    "text-green-400  bg-green-900/30  border-green-700",
   expanding:    "text-green-400  bg-green-900/30  border-green-700",
   growing:      "text-green-400  bg-green-900/30  border-green-700",
-  raised:       "text-green-400  bg-green-900/30  border-green-700",
   stable:       "text-gray-400   bg-gray-800      border-gray-600",
   neutral:      "text-gray-400   bg-gray-800      border-gray-600",
   decelerating: "text-yellow-400 bg-yellow-900/30 border-yellow-700",
   contracting:  "text-red-400    bg-red-900/30    border-red-700",
   deteriorating:"text-red-400    bg-red-900/30    border-red-700",
   shrinking:    "text-red-400    bg-red-900/30    border-red-700",
-  cut:          "text-red-400    bg-red-900/30    border-red-700",
 };
 
 function TrendBadge({ label }: { label: string | null | undefined }) {
@@ -154,7 +139,6 @@ export default function EarningsQualityPanel({ data, ticker, loading }: Props) {
     data.gross_margin_pct != null ||
     data.fcf_margin_pct != null ||
     data.cash_billions != null ||
-    (data.surprise_history?.length ?? 0) > 0 ||
     data.earnings_quality_score != null
   );
 
@@ -186,19 +170,6 @@ export default function EarningsQualityPanel({ data, ticker, loading }: Props) {
     : score < -0.3 ? "text-red-400"
     : "text-yellow-400";
 
-  const guidanceColor = {
-    raised:       "text-green-400",
-    neutral:      "text-gray-400",
-    cut:          "text-red-400",
-    unavailable:  "text-gray-600",
-  }[data.guidance_signal ?? "unavailable"] ?? "text-gray-400";
-
-  const beatStreakColor = !data.beat_streak ? "text-gray-400"
-    : data.beat_streak >= 3  ? "text-green-400"
-    : data.beat_streak >= 1  ? "text-green-300"
-    : data.beat_streak <= -2 ? "text-red-400"
-    : "text-yellow-400";
-
   return (
     <div className="w-full border border-gray-700 rounded-xl p-5
                     bg-gray-900 mt-4">
@@ -215,19 +186,11 @@ export default function EarningsQualityPanel({ data, ticker, loading }: Props) {
             INFORMATIONAL
           </span>
         </div>
-        <div className="flex items-center gap-3">
-          {data.next_earnings_date && (
-            <span className="text-xs text-gray-500">
-              Next earnings:{" "}
-              <span className="text-gray-300">{data.next_earnings_date}</span>
-            </span>
-          )}
-          {score != null && (
-            <span className={`text-sm font-bold ${scoreColor}`}>
-              Quality score: {score >= 0 ? "+" : ""}{score.toFixed(3)}
-            </span>
-          )}
-        </div>
+        {score != null && (
+          <span className={`text-sm font-bold ${scoreColor}`}>
+            Quality score: {score >= 0 ? "+" : ""}{score.toFixed(3)}
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -374,91 +337,7 @@ export default function EarningsQualityPanel({ data, ticker, loading }: Props) {
           </div>
         )}
 
-        {/* Earnings Surprises — only render if data exists */}
-        {data.surprise_history.length > 0 && (
-          <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-700/50">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                EPS Surprise History
-              </h3>
-              {data.beat_streak != null && (
-                <span className={`text-xs font-bold ${beatStreakColor}`}>
-                  {data.beat_streak > 0
-                    ? `${data.beat_streak}Q beat streak`
-                    : data.beat_streak < 0
-                    ? `${Math.abs(data.beat_streak)}Q miss streak`
-                    : "Mixed"}
-                </span>
-              )}
-            </div>
-            <div className="space-y-1.5 mt-1">
-              {data.surprise_history.map((s) => (
-                <div key={s.period}
-                     className="flex justify-between items-center text-xs">
-                  <span className="text-gray-600">{s.period}</span>
-                  <div className="flex items-center gap-2">
-                    {s.eps_estimate != null && (
-                      <span className="text-gray-500">
-                        est ${s.eps_estimate.toFixed(2)}
-                      </span>
-                    )}
-                    {s.eps_actual != null && (
-                      <span className="text-gray-300 font-medium">
-                        act ${s.eps_actual.toFixed(2)}
-                      </span>
-                    )}
-                    {s.surprise_pct != null && (
-                      <span className={`font-bold ${
-                        s.surprise_pct >= 0 ? "text-green-400" : "text-red-400"
-                      }`}>
-                        {s.surprise_pct >= 0 ? "+" : ""}
-                        {s.surprise_pct.toFixed(1)}%
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {data.avg_surprise_pct != null && (
-              <p className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-800">
-                Avg surprise:{" "}
-                <span className={data.avg_surprise_pct >= 0
-                  ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
-                  {data.avg_surprise_pct >= 0 ? "+" : ""}
-                  {data.avg_surprise_pct.toFixed(1)}%
-                </span>
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Guidance Signal — only render if data exists */}
-        {data.guidance_signal != null && data.guidance_signal !== "unavailable" && (
-          <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-700/50">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase
-                           tracking-wide mb-3">
-              Guidance Signal
-            </h3>
-            <div className="flex items-center gap-2 mb-4">
-              <span className={`text-2xl font-black uppercase ${guidanceColor}`}>
-                {data.guidance_signal ?? "N/A"}
-              </span>
-              <span className="text-xs text-gray-600">
-                (via EPS estimate revisions)
-              </span>
-            </div>
-            <p className="text-xs text-gray-600 leading-relaxed">
-              {data.guidance_signal === "raised"
-                ? "Analysts are raising EPS estimates, typically reflecting positive management guidance or improved outlook."
-                : data.guidance_signal === "cut"
-                ? "Analysts are cutting EPS estimates, often reflecting disappointing guidance or deteriorating outlook."
-                : data.guidance_signal === "neutral"
-                ? "EPS estimate revisions are balanced with no clear directional bias."
-                : "Insufficient revision data to determine guidance direction."}
-            </p>
-          </div>
-        )}
-      </div>
+              </div>
 
       <p className="text-xs text-gray-600 border-t border-gray-800 pt-3 mt-4">
         ⚠️ {data.disclaimer}
