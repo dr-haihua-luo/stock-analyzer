@@ -4,27 +4,16 @@ interface Props {
   loading: boolean;
 }
 
-// Parse the 3-label format: NEWS: / SENTIMENT: / OUTLOOK:
+// Extract everything after the NEWS: label (includes sentiment and outlook)
 function parseNarrative(text: string): Record<string, string> {
-  const labels = ["NEWS", "SENTIMENT", "OUTLOOK"];
   const result: Record<string, string> = {};
-  labels.forEach((label, i) => {
-    const nextLabels = labels.slice(i + 1).join(":");
-    // Match content after label until next label or end of string
-    const pattern = new RegExp(
-      `${label}:\\s*(.+?)(?=${nextLabels}:|$)`,
-      "s"
-    );
-    const match = text.match(pattern);
-    if (match) result[label] = match[1].trim();
-  });
+  const match = text.match(/NEWS:\s*(.+)/s);
+  if (match) result["NEWS"] = match[1].trim();
   return result;
 }
 
 const LABEL_META: Record<string, { icon: string; color: string }> = {
   NEWS:      { icon: "📰", color: "border-blue-700 bg-blue-900/20"    },
-  SENTIMENT: { icon: "💬", color: "border-purple-700 bg-purple-900/20" },
-  OUTLOOK:   { icon: "🔭", color: "border-amber-700 bg-amber-900/20"   },
 };
 
 export default function NewsSentimentPanel({
@@ -38,9 +27,9 @@ export default function NewsSentimentPanel({
                       bg-gray-900 mt-4">
         <div className="h-5 w-64 bg-gray-800 rounded animate-pulse mb-4" />
         <div className="space-y-3">
-          {[...Array(3)].map((_, i) => (
+          {[...Array(1)].map((_, i) => (
             <div key={i}
-                 className="h-14 bg-gray-800 rounded-lg animate-pulse" />
+                 className="h-20 bg-gray-800 rounded-lg animate-pulse" />
           ))}
         </div>
       </div>
@@ -72,10 +61,10 @@ export default function NewsSentimentPanel({
         <p className="text-gray-500 text-sm text-center py-6">
           News & sentiment analysis unavailable for {ticker}.
         </p>
-      ) : sections["NEWS"] || sections["SENTIMENT"] || sections["OUTLOOK"] ? (
-        // Has labeled format - render the 3 sections
+      ) : sections["NEWS"] ? (
+        // Has NEWS label - render the news narrative
         <div className="space-y-3">
-          {["NEWS", "SENTIMENT", "OUTLOOK"].map((label) => {
+          {["NEWS"].map((label) => {
             const text = sections[label];
             const meta = LABEL_META[label];
             if (!text) return null;

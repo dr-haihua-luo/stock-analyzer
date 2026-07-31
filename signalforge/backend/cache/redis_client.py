@@ -21,6 +21,8 @@ def _make_llm_cache_key(agent: str, input_dict: dict) -> str:
     Truncated to 16 hex chars — collision probability negligible
     for the small number of tickers in use.
 
+    remove digest from the key
+
     Args:
         agent:      "market" | "sector"
         input_dict: the exact dict of values passed to the LLM prompt
@@ -33,9 +35,12 @@ def _make_llm_cache_key(agent: str, input_dict: dict) -> str:
     digest = hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
     ticker_segment = input_dict.get("ticker", "")
+    # if ticker_segment:
+    #     return f"{LLM_KEY_PREFIX}:{agent}:{ticker_segment}:{digest}"
+    # return f"{LLM_KEY_PREFIX}:{agent}:{digest}"    
     if ticker_segment:
-        return f"{LLM_KEY_PREFIX}:{agent}:{ticker_segment}:{digest}"
-    return f"{LLM_KEY_PREFIX}:{agent}:{digest}"
+        return f"{LLM_KEY_PREFIX}:{agent}:{ticker_segment}"
+    return f"{LLM_KEY_PREFIX}:{agent}"
 
 
 class RedisClient:

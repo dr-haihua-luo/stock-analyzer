@@ -146,7 +146,23 @@ async def analyze_ticker(
         signal_output["market_regime"] = market_analysis.get("REGIME")
 
         # Extract sector LLM fields (sector_narrative already set above)
-        signal_output["sector_rotation_momentum"] = sector_analysis.get("rotation_momentum")
+        # rotation_momentum may be a dict with leading/lagging sector lists
+        # — convert to a readable string to match the Optional[str] model field
+        rotation_momentum = sector_analysis.get("rotation_momentum")
+        if isinstance(rotation_momentum, dict):
+            leading = rotation_momentum.get("leading", [])
+            lagging = rotation_momentum.get("lagging", [])
+            _parts = []
+            if leading:
+                _parts.append("Leading: " + ", ".join(
+                    f"{s.get('sector', '?')} ({s.get('return', '?')})" for s in leading))
+            if lagging:
+                _parts.append("Lagging: " + ", ".join(
+                    f"{s.get('sector', '?')} ({s.get('return', '?')})" for s in lagging))
+            signal_output["sector_rotation_momentum"] = (
+                "; ".join(_parts) if _parts else str(rotation_momentum))
+        else:
+            signal_output["sector_rotation_momentum"] = rotation_momentum
         signal_output["sector_economic_implications"] = sector_analysis.get("economic_implications")
         signal_output["sector_momentum_assessment"] = sector_analysis.get("momentum_assessment")
         signal_output["sector_outlook"] = sector_analysis.get("outlook")
