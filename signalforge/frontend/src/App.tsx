@@ -10,6 +10,7 @@ import EarningsQualityPanel from './components/EarningsQualityPanel';
 import SentimentPanel from './components/SentimentPanel';
 import NewsSentimentPanel from './components/NewsSentimentPanel';
 import PerformanceReportPanel from './components/PerformanceReport';
+import OverallAnalysisPanel from './components/OverallAnalysisPanel';
 
 function App() {
   const [ticker, setTicker] = useState('AAPL');
@@ -108,6 +109,13 @@ function App() {
           <>
             {/* Signal Card */}
             <SignalCard signal={analysisResult.signal} />
+
+            {/* Overall Verdict — final synthesized 6-month outlook */}
+            <OverallAnalysisPanel
+              narrative={analysisResult?.signal?.overall_analysis_narrative}
+              signal={analysisResult?.signal?.signal}
+              loading={loading}
+            />
 
             {/* Confidence Breakdown */}
             <ConfidenceBreakdown

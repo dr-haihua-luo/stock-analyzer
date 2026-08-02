@@ -5,6 +5,7 @@ from backend.agents.market_agent import MarketAgent
 from backend.agents.sector_agent import SectorAgent
 from backend.agents.stock_agent import StockAgent
 from backend.agents.news_sentiment_agent import news_sentiment_node
+from backend.agents.overall_analysis_agent import overall_analysis_node
 from backend.signal.engine import SignalEngine
 import logging
 
@@ -299,6 +300,7 @@ def create_analysis_graph() -> StateGraph:
     workflow.add_node("stock_analysis", stock_analysis_node)
     workflow.add_node("news_sentiment", news_sentiment_node)
     workflow.add_node("signal_generation", signal_generation_node)
+    workflow.add_node("overall_analysis", overall_analysis_node)
 
     # Set entry point
     workflow.set_entry_point("market_analysis")
@@ -308,7 +310,8 @@ def create_analysis_graph() -> StateGraph:
     workflow.add_edge("sector_analysis", "stock_analysis")
     workflow.add_edge("stock_analysis", "news_sentiment")
     workflow.add_edge("news_sentiment", "signal_generation")
-    workflow.add_edge("signal_generation", END)
+    workflow.add_edge("signal_generation", "overall_analysis")
+    workflow.add_edge("overall_analysis", END)
 
     # Add conditional edges for error handling
     workflow.add_conditional_edges(
@@ -347,7 +350,7 @@ def create_analysis_graph() -> StateGraph:
         "signal_generation",
         should_continue,
         {
-            "continue": END,  # Actually ends anyway
+            "continue": "overall_analysis",
             "end": END
         }
     )

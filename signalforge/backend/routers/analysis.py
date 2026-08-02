@@ -131,6 +131,7 @@ async def analyze_ticker(
         signal_output["market_narrative"] = market_analysis.get("OUTLOOK") or _extract_narrative(final_state.get("reasoning"), "market")
         signal_output["sector_narrative"] = sector_analysis.get("outlook") or _extract_narrative(final_state.get("reasoning"), "sector")
         signal_output["stock_narrative"] = stock_analysis.get("stock_analysis") or _extract_narrative(final_state.get("reasoning"), "stock")
+        signal_output["overall_analysis_narrative"] = _extract_narrative(final_state.get("reasoning"), "overall")
 
         # Debug: confirm all three narratives are populated
         logger.info(

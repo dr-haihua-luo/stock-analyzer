@@ -140,6 +140,7 @@ class SignalOutput(BaseModel):
     sector_narrative: Optional[str] = None
     stock_narrative: Optional[str] = None
     news_sentiment_narrative: Optional[str] = None
+    overall_analysis_narrative: Optional[str] = None
     # Additional market LLM response fields
     market_macro: Optional[str] = None
     market_rates_fx: Optional[str] = None

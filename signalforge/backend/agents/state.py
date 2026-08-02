@@ -16,6 +16,7 @@ class AnalysisState(TypedDict):
     news_articles: Optional[List[dict]]  # raw news summaries from Alpaca
     stocktwits_raw: Optional[Any]  # SentimentResult dataclass
     news_sentiment_narrative: Optional[str]  # LLM output from news_sentiment_agent
+    overall_analysis_narrative: Optional[str]  # LLM synthesis from overall_analysis_agent (final verdict)
     analysis_result: Optional[Dict[str, Any]]
     signal_output: Optional[Dict[str, Any]]
     confidence_breakdown: Optional[Dict[str, Any]]

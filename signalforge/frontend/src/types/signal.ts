@@ -114,6 +114,7 @@ export interface SignalOutput {
   sector_narrative?: string | null;
   stock_narrative?: string | null;
   news_sentiment_narrative?: string | null;
+  overall_analysis_narrative?: string | null;
   // Additional market LLM fields
   market_macro?: string | null;
   market_rates_fx?: string | null;
