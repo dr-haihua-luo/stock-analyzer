@@ -96,6 +96,13 @@ def _build_llm_input(state: AnalysisState) -> dict:
     confidence = signal_output.get("confidence")
     composite = signal_output.get("composite_score")
 
+    # current_price = state.get("current_price")
+    # if current_price is None:
+    current_price = 0
+    _sd = state.get("stock_data")
+    if isinstance(_sd, dict):
+        current_price = _sd.get("current_price")
+
     return {
         "prompt_version": "overall_v1",
         "ticker": state["ticker"],
@@ -106,6 +113,7 @@ def _build_llm_input(state: AnalysisState) -> dict:
         "signal": signal_output.get("signal"),
         "confidence": round(confidence, 3) if confidence is not None else None,
         "composite_score": round(composite, 4) if composite is not None else None,
+        "current_price": round(float(current_price), 2) if current_price is not None else None,
     }
 
 
@@ -115,14 +123,17 @@ async def _call_llm(llm_input: dict) -> str:
     signal = llm_input.get("signal") or "N/A"
     confidence = llm_input.get("confidence")
     composite = llm_input.get("composite_score")
+    current_price = llm_input.get("current_price")
+    price_str = f"${current_price:.2f}" if current_price is not None else "N/A"
 
     confidence_str = f"{confidence:.0%}" if confidence is not None else "N/A"
     composite_str = f"{composite:+.4f}" if composite is not None else "N/A"
 
-    logger.info("Calling LLM for overall analysis")
+    logger.info("Calling LLM for overall analysis for %s with current price %s", ticker, price_str )
     return await llm_client.generate_structured_completion(
         prompt=(
             f"Ticker: {ticker}\n"
+            f"Current price: {price_str}\n"
             f"Computed signal: {signal} "
             f"(confidence {confidence_str}, composite {composite_str})\n\n"
             f"MARKET ANALYSIS\n{llm_input['market_narrative'] or 'N/A'}\n\n"
@@ -130,8 +141,7 @@ async def _call_llm(llm_input: dict) -> str:
             f"STOCK ANALYSIS\n{llm_input['stock_narrative'] or 'N/A'}\n\n"
             f"NEWS & SENTIMENT\n{llm_input['news_narrative'] or 'N/A'}\n\n"
             f"---\n"
-            f"Write a 6-MONTH outlook in exactly this format, "
-            f"3-4 sentences total, concise:\n\n"
+            f"Write a 6-MONTH outlook in exactly this concise format, 3-4 sentences total:\n\n"
             f"VERDICT: <BUY, HOLD, or SELL — state it as the first two words>\n"
             f"REASONING: <2-3 sentences integrating the strongest signals "
             f"across all four inputs, and any conflicts between them>\n"
@@ -145,14 +155,15 @@ async def _call_llm(llm_input: dict) -> str:
             "news/social sentiment) plus a computed quantitative signal. "
             "Synthesize them into ONE clear 6-month outlook. "
             "Do not restate each input separately — integrate them into "
-            "a single coherent view. Flag any tension between inputs "
+            "a single coherent view. Flag any tension between inputs if present "
             "(e.g. strong stock fundamentals but weak macro backdrop; "
             "Is social/news hype aligned with underlying financial reality, or is there a divergence (anomaly/trap)?) "
-            "if present, since that materially affects conviction.  "
-            "Cross-reference Sentiment/Technicals with Fundamentals. Provide a clear Risk/Reward asymmetric setup."
-            "Final Action Bias: [BUY / HOLD / SELL / WATCH] with a specific thesis invalidation (stop-loss logic) "
-            "price point and 6-to-12-month horizon target."
-            "Be precise, avoid generic disclaimers, flag data gaps immediately, and prioritize downside risk protection."
+            "since that materially affects conviction.  "
+            "Cross-reference Sentiment with technicals / Fundamentals. Provide a clear Risk/Reward asymmetric setup."
+            "Final Action Bias: [BUY / HOLD / SELL / WATCH] with a specific invalidation "
+            "price point (stop-loss logic), prioritize downside risk protection and 6-month horizon target."
+            "Be precise, avoid generic disclaimers, flag data gaps immediately. "
+            "Use the current stock price (given above) for price-level and upside/downside context."
         ),
         max_tokens=2000,
     )
