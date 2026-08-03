@@ -13,7 +13,7 @@ concise 6-month outlook verdict.
 - **Frontend**: React 18 + Vite + TypeScript + TailwindCSS + Recharts
 - **Backend**: Python 3.10+ + FastAPI + Pydantic v2
 - **Agent Framework**: LangGraph — deterministic state-machine orchestration
-- **LLM**: `openai/gpt-oss-20b:free` (primary) + `inclusionai/ling-3.0-flash:free` (fallback) via OpenRouter
+- **LLM**: `openai/gpt-oss-20b:free`  via OpenRouter
 - **Data sources**:
   - Alpaca Market Data — stock OHLCV bars, real-time quotes, news (primary stock feed)
   - yfinance — market indexes (S&P 500, Nasdaq) and sector-ETF data
