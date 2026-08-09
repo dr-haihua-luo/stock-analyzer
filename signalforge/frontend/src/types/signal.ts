@@ -100,6 +100,26 @@ export interface FundamentalsDisplay {
   disclaimer: string;
 }
 
+export interface StockContextDisplay {
+  ticker: string;
+  current_price?: number | null;
+  rsi_14?: number | null;
+  macd_signal?: string | null;
+  bb_position?: string | null;
+  volume_trend?: string | null;
+  price_vs_52w_high?: number | null;
+  news_sentiment?: number | null;
+  technical_score?: number | null;
+  fundamental_score?: number | null;
+  long_term_ma_trend?: 'up' | 'down' | null;
+  long_term_ma_value?: number | null;
+  medium_term_ma_trend?: 'up' | 'down' | null;
+  medium_term_ma_value?: number | null;
+  short_term_ma_trend?: 'up' | 'down' | null;
+  short_term_ma_value?: number | null;
+  disclaimer?: string;
+}
+
 export interface SignalOutput {
   ticker: string;
   signal: 'BUY' | 'HOLD' | 'SELL';
@@ -110,6 +130,7 @@ export interface SignalOutput {
   stocktwits_sentiment?: StockTwitsSentiment | null;
   fundamentals?: FundamentalsDisplay | null;
   earnings_quality?: EarningsQualityDisplay | null;
+  stock_context?: StockContextDisplay | null;
   market_narrative?: string | null;
   sector_narrative?: string | null;
   stock_narrative?: string | null;

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAnalysis } from './hooks/useAnalysis';
 import { usePerformance } from './hooks/usePerformance';
 import SignalCard from './components/SignalCard';
+import MATrendBadges from './components/MATrendBadges';
 import MarketOverview from './components/MarketOverview';
 import SectorHeatmap from './components/SectorHeatmap';
 import ConfidenceBreakdown from './components/ConfidenceBreakdown';
@@ -109,6 +110,16 @@ function App() {
           <>
             {/* Signal Card */}
             <SignalCard signal={analysisResult.signal} />
+
+            {/* MA Trend Badges */}
+            <div className="mt-6">
+              <MATrendBadges
+                longTrend={analysisResult?.signal?.stock_context?.long_term_ma_trend}
+                mediumTrend={analysisResult?.signal?.stock_context?.medium_term_ma_trend}
+                shortTrend={analysisResult?.signal?.stock_context?.short_term_ma_trend}
+                loading={loading}
+              />
+            </div>
 
             {/* Overall Verdict — final synthesized 6-month outlook */}
             <OverallAnalysisPanel

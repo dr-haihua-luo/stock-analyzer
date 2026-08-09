@@ -125,6 +125,30 @@ class FundamentalsDisplay(BaseModel):
     )
 
 
+class StockContextDisplay(BaseModel):
+    """Stock context surfaced to the frontend — includes MA trend indicators."""
+    ticker: str
+    current_price: Optional[float] = None
+    rsi_14: Optional[float] = None
+    macd_signal: Optional[str] = None
+    bb_position: Optional[str] = None
+    volume_trend: Optional[str] = None
+    price_vs_52w_high: Optional[float] = None
+    news_sentiment: Optional[float] = None
+    technical_score: Optional[float] = None
+    fundamental_score: Optional[float] = None
+    long_term_ma_trend: Optional[str] = None       # "up" | "down"
+    long_term_ma_value: Optional[float] = None
+    medium_term_ma_trend: Optional[str] = None     # "up" | "down"
+    medium_term_ma_value: Optional[float] = None
+    short_term_ma_trend: Optional[str] = None      # "up" | "down"
+    short_term_ma_value: Optional[float] = None
+    disclaimer: str = (
+        "MA trend indicators are informational only and do not affect "
+        "the BUY/HOLD/SELL signal or confidence score."
+    )
+
+
 class SignalOutput(BaseModel):
     """Final signal output from the analysis pipeline."""
     ticker: str = Field(description="Stock ticker symbol")
@@ -136,6 +160,7 @@ class SignalOutput(BaseModel):
     stocktwits_sentiment: Optional[StockTwitsSentiment] = None
     fundamentals: Optional[FundamentalsDisplay] = None
     earnings_quality: Optional[EarningsQualityDisplay] = None
+    stock_context: Optional[StockContextDisplay] = None
     market_narrative: Optional[str] = None
     sector_narrative: Optional[str] = None
     stock_narrative: Optional[str] = None

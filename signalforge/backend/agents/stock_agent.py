@@ -7,6 +7,7 @@ from backend.data.stock_data import (
     compute_52w_metrics,
     compute_technicals,
     compute_technical_score,
+    compute_ma_trends,
     fetch_news_sentiment,
 )
 from backend.data.fundamentals_data import fetch_fundamentals, FundamentalsResult
@@ -51,6 +52,9 @@ class StockAgent:
                 technicals, w52["pct_from_52w_high"]
             )
 
+            # 6. Moving average trends (informational only)
+            ma_trends = compute_ma_trends(df)
+
             # 6. Fetch real fundamentals from FinViz + TipRanks
             # TipRanks can be skipped via state flag to preserve rate limit
             skip_tipranks = state.get("skip_tipranks", True)
@@ -75,6 +79,12 @@ class StockAgent:
 
             fund_score_str = f"{fundamentals.fundamental_score:+.3f}" if fundamentals else "N/A"
 
+            ma_trend_summary = (
+                f"MA trends — Long(12mo): {ma_trends.get('long_term_ma_trend', 'N/A')} | "
+                f"Medium(2mo): {ma_trends.get('medium_term_ma_trend', 'N/A')} | "
+                f"Short(2wk): {ma_trends.get('short_term_ma_trend', 'N/A')}"
+            )
+
             # 8. LLM narrative for stock conditions
             # Build canonical input dict for cache key (must capture every
             # value that influences the prompt output)
@@ -97,6 +107,12 @@ class StockAgent:
                 "insider_sells_90d": fv.insider_sells_90d if fv and fv.insider_sells_90d else None,
                 "news_sentiment": round(news_sentiment, 4),
                 "fundamental_score": round(fundamentals.fundamental_score, 3) if fundamentals else None,
+                "long_term_ma_trend": ma_trends.get("long_term_ma_trend"),
+                "long_term_ma_value": ma_trends.get("long_term_ma_value"),
+                "medium_term_ma_trend": ma_trends.get("medium_term_ma_trend"),
+                "medium_term_ma_value": ma_trends.get("medium_term_ma_value"),
+                "short_term_ma_trend": ma_trends.get("short_term_ma_trend"),
+                "short_term_ma_value": ma_trends.get("short_term_ma_value"),
             }
 
             # Try LLM cache first
@@ -119,7 +135,8 @@ class StockAgent:
                 RSI(14): {technicals['rsi_14']:.1f}
                 MACD: {technicals['macd_signal']}
                 BB: {technicals['bb_position']}
-                Volume: {technicals['volume_trend']}\n
+                Volume: {technicals['volume_trend']}
+                {ma_trend_summary}\n
                 P/E: {pe_str}  Fwd P/E: {fwd_pe_str}
                 Profit margin: {profit_margin}  ROE: {roe_str}
                 EPS growth 5Y: {eps_growth}\n
@@ -170,6 +187,12 @@ class StockAgent:
                 "news_sentiment": news_sentiment,
                 "technical_score": tech_score,
                 "fundamental_score": fund_score,
+                "long_term_ma_trend": ma_trends.get("long_term_ma_trend"),
+                "long_term_ma_value": ma_trends.get("long_term_ma_value"),
+                "medium_term_ma_trend": ma_trends.get("medium_term_ma_trend"),
+                "medium_term_ma_value": ma_trends.get("medium_term_ma_value"),
+                "short_term_ma_trend": ma_trends.get("short_term_ma_trend"),
+                "short_term_ma_value": ma_trends.get("short_term_ma_value"),
             }
 
             # Analysis result (what the LLM produced)

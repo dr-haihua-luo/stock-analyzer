@@ -38,6 +38,14 @@ class StockContext(BaseModel):
     technical_score: float     # -1.0 to 1.0
     fundamental_score: float   # -1.0 to 1.0
 
+    # MA trend indicators (informational only, do not affect signal)
+    long_term_ma_trend: Optional[str] = None      # "up" | "down"
+    long_term_ma_value: Optional[float] = None
+    medium_term_ma_trend: Optional[str] = None    # "up" | "down"
+    medium_term_ma_value: Optional[float] = None
+    short_term_ma_trend: Optional[str] = None     # "up" | "down"
+    short_term_ma_value: Optional[float] = None
+
 
 class MarketContext(BaseModel):
     # --- existing fields ---

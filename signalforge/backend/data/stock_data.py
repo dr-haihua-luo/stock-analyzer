@@ -67,7 +67,7 @@ async def fetch_ohlcv(ticker: str) -> pd.DataFrame:
         return df
 
     end   = datetime.now(timezone.utc)
-    start = end - timedelta(days=182)
+    start = end - timedelta(days=500)  # extended for 12mo MA trend calc
 
     request = StockBarsRequest(
         symbol_or_symbols=ticker,
@@ -352,3 +352,68 @@ def compute_fundamental_score(
         score -= 0.20
 
     return round(max(-1.0, min(1.0, score)), 4)
+
+
+# ---------------------------------------------------------------------------
+# Moving average trend indicators (informational only — does not affect signal)
+# ---------------------------------------------------------------------------
+MA_TREND_WINDOWS = {
+    "long":   252,  # ~12 months trading days
+    "medium": 42,   # ~2 months trading days
+    "short":  10,   # ~2 weeks trading days
+}
+
+# How many recent MA points to fit a slope over — smooths day-to-day
+# noise while still being responsive enough to catch genuine reversals.
+MA_TREND_LOOKBACK = {
+    "long":   20,
+    "medium": 10,
+    "short":  5,
+}
+
+
+def compute_ma_trends(df: pd.DataFrame) -> dict:
+    """
+    Computes long/medium/short-term moving average trend direction.
+
+    For each window, builds the MA series, takes the most recent
+    N points of that series (MA_TREND_LOOKBACK), fits a linear
+    regression, and classifies the slope sign as "up" or "down".
+
+    This measures whether the MOVING AVERAGE ITSELF is rising or
+    falling — not whether price is above/below it — which correctly
+    distinguishes cases like "price bounced above a still-declining
+    long-term MA" from "long-term MA has turned up."
+
+    Returns dict with keys:
+      long_term_ma_trend, medium_term_ma_trend, short_term_ma_trend
+        — each "up" | "down" | None (None if insufficient data)
+      long_term_ma_value, medium_term_ma_value, short_term_ma_value
+        — the current MA value, for display context
+    """
+    close = df["close"]
+    result = {}
+
+    for label, window in MA_TREND_WINDOWS.items():
+        lookback = MA_TREND_LOOKBACK[label]
+        min_required = window + lookback
+
+        if len(close) < min_required:
+            result[f"{label}_term_ma_trend"] = None
+            result[f"{label}_term_ma_value"] = None
+            logger.debug(
+                "MA trend skip (%s): need %d points, have %d",
+                label, min_required, len(close)
+            )
+            continue
+
+        ma_series = close.rolling(window).mean().dropna()
+        recent    = ma_series.iloc[-lookback:]
+
+        x     = np.arange(len(recent))
+        slope = np.polyfit(x, recent.values, 1)[0]
+
+        result[f"{label}_term_ma_trend"] = "up" if slope > 0 else "down"
+        result[f"{label}_term_ma_value"] = round(float(ma_series.iloc[-1]), 2)
+
+    return result

@@ -12,6 +12,7 @@ from backend.signal.models import (
     TipRanksSnapshot,
     EarningsQualityDisplay,
     QuarterlyDataPoint,
+    StockContextDisplay,
 )
 from backend.agents.graph import analysis_graph
 from backend.data.stocktwits_data import fetch_stocktwits_sentiment
@@ -267,6 +268,27 @@ async def analyze_ticker(
         # Attach price_at_signal to signal_output from stock_data in final_state
         stock_data = final_state.get("stock_data", {})
         signal_output["price_at_signal"] = stock_data.get("current_price") if stock_data else None
+
+        # Attach stock_context (including MA trends) for the frontend
+        if stock_data:
+            signal_output["stock_context"] = StockContextDisplay(
+                ticker=stock_data.get("ticker", request.ticker.upper()),
+                current_price=stock_data.get("current_price"),
+                rsi_14=stock_data.get("rsi_14"),
+                macd_signal=stock_data.get("macd_signal"),
+                bb_position=stock_data.get("bb_position"),
+                volume_trend=stock_data.get("volume_trend"),
+                price_vs_52w_high=stock_data.get("price_vs_52w_high"),
+                news_sentiment=stock_data.get("news_sentiment"),
+                technical_score=stock_data.get("technical_score"),
+                fundamental_score=stock_data.get("fundamental_score"),
+                long_term_ma_trend=stock_data.get("long_term_ma_trend"),
+                long_term_ma_value=stock_data.get("long_term_ma_value"),
+                medium_term_ma_trend=stock_data.get("medium_term_ma_trend"),
+                medium_term_ma_value=stock_data.get("medium_term_ma_value"),
+                short_term_ma_trend=stock_data.get("short_term_ma_trend"),
+                short_term_ma_value=stock_data.get("short_term_ma_value"),
+            ).model_dump()
 
         # Save signal to database (background task)
         background_tasks.add_task(
