@@ -240,6 +240,44 @@ export default function FundamentalPanel({ fundamentals, ticker, loading }: Prop
             </div>
           )}
 
+          {/* Institutional Activity */}
+          {fv && (fv.inst_own_pct != null || fv.inst_trans_pct != null) && (
+            <div className="border border-gray-700/50 rounded-xl p-4 bg-gray-800/30">
+              <h3 className="text-sm font-medium text-gray-400 mb-3 uppercase tracking-wide">
+                Institutional Activity — FinViz
+              </h3>
+              <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                {fv.inst_own_pct != null && (
+                  <span className="text-white">
+                    Institutional ownership:{" "}
+                    <span className="text-white font-semibold">
+                      {fv.inst_own_pct.toFixed(1)}%
+                    </span>
+                    <span className="text-gray-500 text-xs ml-1">of float</span>
+                  </span>
+                )}
+                {fv.inst_trans_pct != null && (
+                  <span className="text-white">
+                    Quarterly change:{" "}
+                    <span className={`font-semibold ${
+                      fv.inst_trans_pct > 0.5  ? "text-green-400" :
+                      fv.inst_trans_pct < -0.5 ? "text-red-400"   :
+                                                  "text-gray-300"
+                    }`}>
+                      {fv.inst_trans_pct >= 0 ? "+" : ""}
+                      {fv.inst_trans_pct.toFixed(2)}%
+                    </span>
+                    <span className="text-gray-500 text-xs ml-1">
+                      {fv.inst_trans_pct > 0.5  ? "(accumulating)" :
+                       fv.inst_trans_pct < -0.5 ? "(distributing)"  :
+                                                 "(roughly flat)"}
+                    </span>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Recent analyst actions from FinViz */}
           {fv && fv.recent_analyst_actions && fv.recent_analyst_actions.length > 0 && (
             <div>

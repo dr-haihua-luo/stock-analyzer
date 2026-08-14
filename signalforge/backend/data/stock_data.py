@@ -306,7 +306,7 @@ def fetch_news_sentiment(ticker: str) -> tuple:
         news_summary = []
         for article in articles:
             text  = getattr(article, "summary",  "").lower()
-            logger.info(f"Stock news for {ticker}: {text}")
+            #logger.info(f"Stock news for {ticker}: {text}")
             news_summary.append({ "summary": getattr(article, "summary", "")})
             words = set(text.split())
             pos = len(words & POSITIVE_WORDS)

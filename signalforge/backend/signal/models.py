@@ -86,6 +86,8 @@ class FinvizSnapshot(BaseModel):
     oper_margin_pct: Optional[float]
     debt_to_equity: Optional[float]
     insider_own_pct: Optional[float]
+    inst_own_pct: Optional[float] = None
+    inst_trans_pct: Optional[float] = None
     net_insider_sentiment: Optional[float]
     insider_buys_90d: Optional[int]
     insider_sells_90d: Optional[int]

@@ -126,6 +126,7 @@ def _finviz_fundamentals_from_dict(data: dict) -> "FinvizFundamentals":
         insider_own_pct=data.get("insider_own_pct"),
         insider_trans_pct=data.get("insider_trans_pct"),
         inst_own_pct=data.get("inst_own_pct"),
+        inst_trans_pct=data.get("inst_trans_pct"),
         short_float_pct=data.get("short_float_pct"),
         market_cap_billions=data.get("market_cap_billions"),
         beta=data.get("beta"),
@@ -267,12 +268,23 @@ def _compute_fundamental_score(
     if health_signals:
         health_score = sum(health_signals) / len(health_signals)
         components["health"] = round(health_score, 4)
-        weights["health"] = 0.15
+        weights["health"] = 0.08          # was 0.15, reduced to make room for institutional_flow
 
     # --- Insider sentiment ---
     if fv and fv.net_insider_sentiment is not None:
         components["insider"] = round(fv.net_insider_sentiment, 4)
-        weights["insider"] = 0.10
+        weights["insider"] = 0.08         # was 0.10, reduced to make room for institutional_flow
+
+    # --- Institutional flow ---
+    # Inst Trans is the directional signal: positive = accumulating,
+    # negative = distributing. Inst Own alone (static level) is not
+    # used for scoring — only the quarterly CHANGE carries signal.
+    if fv and fv.inst_trans_pct is not None:
+        # Scale: +5% quarterly increase = strong accumulation (+0.6)
+        #        -5% quarterly decrease = strong distribution (-0.6)
+        inst_score = max(-1.0, min(1.0, fv.inst_trans_pct / 5 * 0.6))
+        components["institutional_flow"] = round(inst_score, 4)
+        weights["institutional_flow"] = 0.09   # NEW
 
     # --- Analyst consensus (TipRanks) ---
     consensus_map = {

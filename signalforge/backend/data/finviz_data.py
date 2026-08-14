@@ -66,6 +66,7 @@ class FinvizFundamentals:
     insider_own_pct: Optional[float]
     insider_trans_pct: Optional[float]
     inst_own_pct: Optional[float]
+    inst_trans_pct: Optional[float]     # NEW — quarterly change in inst ownership
     short_float_pct: Optional[float]
     # Market
     market_cap_billions: Optional[float]
@@ -210,6 +211,7 @@ def _parse_html(ticker: str, html: str) -> Optional[FinvizFundamentals]:
             insider_own_pct=_parse_pct(fund_dict.get("Insider Own")),
             insider_trans_pct=_parse_pct(fund_dict.get("Insider Trans")),
             inst_own_pct=_parse_pct(fund_dict.get("Inst Own")),
+            inst_trans_pct=_parse_pct(fund_dict.get("Inst Trans")),
             short_float_pct=_parse_pct(fund_dict.get("Short Float")),
             market_cap_billions=_parse_market_cap(fund_dict.get("Market Cap")),
             beta=_parse_float(fund_dict.get("Beta")),

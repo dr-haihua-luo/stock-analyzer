@@ -189,6 +189,8 @@ async def analyze_ticker(
                     oper_margin_pct=fv.oper_margin_pct,
                     debt_to_equity=fv.debt_to_equity,
                     insider_own_pct=fv.insider_own_pct,
+                    inst_own_pct=fv.inst_own_pct,
+                    inst_trans_pct=fv.inst_trans_pct,
                     net_insider_sentiment=fv.net_insider_sentiment,
                     insider_buys_90d=fv.insider_buys_90d,
                     insider_sells_90d=fv.insider_sells_90d,

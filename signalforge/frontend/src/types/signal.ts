@@ -28,6 +28,8 @@ export interface FinvizSnapshot {
   oper_margin_pct: number | null;
   debt_to_equity: number | null;
   insider_own_pct: number | null;
+  inst_own_pct: number | null;
+  inst_trans_pct: number | null;
   net_insider_sentiment: number | null;
   insider_buys_90d: number | null;
   insider_sells_90d: number | null;
