@@ -10,20 +10,26 @@ No API key required. Redis TTL: 4 hours.
 """
 
 import asyncio
+import json
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Optional
 
 from bs4 import BeautifulSoup
 from curl_cffi.requests import AsyncSession
 
+from backend.cache.redis_client import redis_client
+
 logger = logging.getLogger(__name__)
 
 FINVIZ_BASE   = "https://finviz.com/quote.ashx"
 TIMEOUT       = 15.0
 BROWSER       = "chrome"
+
+# Redis TTL for raw FinViz scrape cache (shared between sector_agent and stock_agent)
+FINVIZ_RAW_CACHE_TTL = 14400   # 4 hours — matches FundamentalsResult cache TTL
 
 # User-agent is set by curl_cffi's impersonation — do not override it.
 # Adding a mismatched User-Agent header would worsen TLS fingerprint
@@ -33,6 +39,36 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     "Referer":         "https://finviz.com/",
 }
+
+# Maps FinViz's sector label text to the SPDR sector name used in
+# SectorData.etf_by_sector (backend/data/sector_data.py). FinViz's
+# labels are close to GICS names but not always an exact string match.
+FINVIZ_TO_SPDR_SECTOR = {
+    "Technology":              "Technology",
+    "Financial":                "Financial",
+    "Financial Services":        "Financial",
+    "Energy":                    "Energy",
+    "Healthcare":                 "Healthcare",
+    "Industrials":                 "Industrial",
+    "Consumer Cyclical":            "Consumer Discretionary",
+    "Consumer Defensive":            "Consumer Staples",
+    "Basic Materials":                "Materials",
+    "Utilities":                       "Utilities",
+    "Real Estate":                      "Real Estate",
+    "Communication Services":            "Communication Services",
+}
+
+
+def normalize_sector_to_spdr(finviz_sector: Optional[str]) -> Optional[str]:
+    """
+    Convert FinViz's sector label to the SPDR sector name used
+    elsewhere in the app (SectorData.etf_by_sector keys).
+    Returns None if the sector is unrecognized — caller should
+    fall back to overall market rotation rather than a specific ETF.
+    """
+    if not finviz_sector:
+        return None
+    return FINVIZ_TO_SPDR_SECTOR.get(finviz_sector.strip())
 
 
 @dataclass
@@ -82,6 +118,9 @@ class FinvizFundamentals:
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
     source: str = "finviz"
+    # Classification — parsed from FinViz quote page header
+    sector: Optional[str] = None
+    industry: Optional[str] = None
 
 
 async def fetch_finviz_fundamentals(ticker: str) -> Optional[FinvizFundamentals]:
@@ -90,16 +129,43 @@ async def fetch_finviz_fundamentals(ticker: str) -> Optional[FinvizFundamentals]
 
     Fetches the raw HTML page with curl_cffi (bypasses Cloudflare),
     then parses with BeautifulSoup. Runs in async context.
+    Results are cached in Redis for 4 hours under key
+    ``data:finviz_raw:{ticker}`` so that multiple agents in the same
+    pipeline run (sector_agent, stock_agent) share a single FinViz
+    scrape.
     Returns None on any failure — never raises.
     """
+    cache_key = f"data:finviz_raw:{ticker.upper()}"
+
+    # Check Redis cache first
+    cached = await redis_client.get_raw(cache_key)
+    if cached:
+        try:
+            data = json.loads(cached)
+            return FinvizFundamentals(**data)
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.warning("Failed to parse cached FinViz data for %s: %s", ticker, exc)
+
     try:
         html = await _fetch_html(ticker)
         if html is None:
             return None
         logger.info("Calling finviz")
-        return await asyncio.get_event_loop().run_in_executor(
+        result = await asyncio.get_event_loop().run_in_executor(
             None, _parse_html, ticker, html
         )
+
+        # Cache the result as JSON (convert dataclass to dict)
+        if result:
+            await redis_client.set_raw(
+                cache_key,
+                json.dumps(asdict(result), default=str),
+                ttl=FINVIZ_RAW_CACHE_TTL,
+            )
+            logger.debug("FinViz data cached for %s (key=%s, ttl=%ds)",
+                         ticker, cache_key, FINVIZ_RAW_CACHE_TTL)
+
+        return result
     except Exception as exc:
         logger.warning("fetch_finviz_fundamentals failed for %s: %s", ticker, exc)
         return None
@@ -160,6 +226,32 @@ async def _fetch_html(ticker: str) -> Optional[str]:
         return None
 
 
+def _parse_sector_industry(soup: BeautifulSoup) -> tuple[Optional[str], Optional[str]]:
+    """
+    Parse Sector and Industry from the FinViz quote page header.
+    These appear as a breadcrumb-style link row near the top of
+    the page, format: Sector | Industry | Country | Exchange
+
+    FinViz header links use href patterns like:
+      screener.ashx?v=111&f=sec_technology
+      screener.ashx?v=111&f=ind_softwareinfrastructure
+
+    Returns (sector, industry) — either may be None if not found.
+    """
+    try:
+        sector_link = soup.find("a", href=re.compile(r"f=sec_", re.I))
+        industry_link = soup.find("a", href=re.compile(r"f=ind_", re.I))
+
+        sector   = sector_link.get_text(strip=True)   if sector_link   else None
+        industry = industry_link.get_text(strip=True) if industry_link else None
+
+        return sector, industry
+
+    except Exception as exc:
+        logger.debug("sector/industry parse skip: %s", exc)
+        return None, None
+
+
 def _parse_html(ticker: str, html: str) -> Optional[FinvizFundamentals]:
     """
     Parse FinViz quote page HTML into a FinvizFundamentals dataclass.
@@ -171,6 +263,13 @@ def _parse_html(ticker: str, html: str) -> Optional[FinvizFundamentals]:
     """
     try:
         soup = BeautifulSoup(html, "lxml")
+
+        # --- Sector / Industry classification (from page header links) ---
+        sector, industry = _parse_sector_industry(soup)
+        if sector:
+            logger.info("fundamental Sector = %s", sector)
+        if industry:
+            logger.info("fundamental Industry = %s", industry)
 
         # --- Fundamentals table ---
         fund_dict = _parse_fundamentals_table(soup)
@@ -219,6 +318,8 @@ def _parse_html(ticker: str, html: str) -> Optional[FinvizFundamentals]:
             insider_buys_90d=buys,
             insider_sells_90d=sells,
             recent_analyst_actions=recent_actions,
+            sector=sector,
+            industry=industry,
         )
 
     except Exception as exc:

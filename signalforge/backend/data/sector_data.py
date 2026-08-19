@@ -290,7 +290,7 @@ class SectorData:
             response = session.get(url, params=params, headers=headers)
             response.raise_for_status()
             data_json = response.json()
-            logger.info(f"Sector ETF {symbol} data received: {len(data_json.get('chart', {}).get('result', []))} {response.text}")
+            logger.info(f"Sector ETF {symbol} data received: {len(data_json.get('chart', {}).get('result', []))} {len(response.text)}")
 
             if not data_json['chart']['result']:
                 raise ValueError(f"No data found for {symbol}")

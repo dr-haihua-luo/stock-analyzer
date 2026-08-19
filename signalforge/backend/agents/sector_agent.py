@@ -1,5 +1,9 @@
 from typing import Dict, Any, Optional
 from backend.data.sector_data import SectorData
+from backend.data.finviz_data import (
+    fetch_finviz_fundamentals,
+    normalize_sector_to_spdr,
+)
 from backend.agents.llm_client import llm_client
 from backend.cache.redis_client import redis_client
 import logging
@@ -29,61 +33,67 @@ class SectorAgent:
         try:
             logger.info("Starting sector analysis")
 
-            # Get the stock's sector from fundamentals if available
-            stock_data = state.get("stock_data", {})
-            target_sector = None
             ticker = state.get("ticker", "")
-            if stock_data and isinstance(stock_data, dict):
-                fundamentals = stock_data.get("fundamentals", {})
-                if fundamentals and isinstance(fundamentals, dict):
-                    target_sector = fundamentals.get("sector")
 
-            # Get sector data - if we have a target sector, only get that sector's data
-            if target_sector:
-                logger.info(f"Fetching data for target sector: {target_sector}")
-                sector_performance = await self.sector_data.get_sector_etf_data_by_sector(target_sector)
+            # 1. Determine the ticker's sector via FinViz (independent call —
+            #    no dependency on stock_agent's state)
+            fv = await fetch_finviz_fundamentals(ticker)
+            finviz_sector = fv.sector if fv else None
+            spdr_sector = normalize_sector_to_spdr(finviz_sector)
+
+            if spdr_sector is None:
+                logger.warning(
+                    "sector_agent: could not determine sector for %s "
+                    "(FinViz returned: %r) — falling back to overall "
+                    "market rotation only",
+                    ticker, finviz_sector,
+                )
+
+            # 2. Fetch the ticker's specific sector ETF data (if sector known)
+            ticker_sector_etf_data = None
+            sector_etf_symbol = None
+            if spdr_sector:
+                logger.info(f"Fetching data for target sector: {spdr_sector}")
+                ticker_sector_etf_data = await self.sector_data.get_sector_etf_data_by_sector(
+                    spdr_sector
+                )
+                sector_etf_symbol = self.sector_data.etf_by_sector.get(spdr_sector)
+
+            # 3. Fetch overall sector rotation context (all 11 sectors ranked)
+            overall_rotation = await self.sector_data.get_sector_performance()
+
+            # 4. Determine this sector's rank within the rotation
+            ranking = overall_rotation.get("rotation_signals", {}).get("ranking", [])
+            sector_rank = None
+            if sector_etf_symbol and sector_etf_symbol in ranking:
+                sector_rank = ranking.index(sector_etf_symbol) + 1
+            sector_etf_data = ticker_sector_etf_data
+
+            # Build sector_performance to preserve the existing variable name
+            # used throughout the rest of this method. When we have sector-
+            # specific data, use that; otherwise fall back to overall rotation.
+            if sector_etf_data and "name" in sector_etf_data:
+                sector_performance = sector_etf_data
             else:
-                logger.info("Fetching data for all sectors (no target sector specified)")
-                sector_performance = await self.sector_data.get_sector_performance()
+                sector_performance = overall_rotation
 
-            # Build LLM input with all values that influence the prompt
-            # For specific sector analysis (target_sector case)
-            if target_sector and isinstance(sector_performance, dict) and "name" in sector_performance:
-                sector_momentum_1m = sector_performance.get("1m_return", 0.0)
-                sector_rs_vs_spy = sector_momentum_1m  # Simplified - using momentum as RS proxy
+            # Build LLM input — always use the ticker's specific sector ETF
+            # data for momentum/RS/score, and the overall rotation for rank.
+            sector_momentum_1m = 0.0
+            if sector_etf_data and isinstance(sector_etf_data, dict):
+                sector_momentum_1m = sector_etf_data.get("1m_return", 0.0)
+            sector_rs_vs_spy = sector_momentum_1m  # Simplified — using momentum as RS proxy
 
-                llm_input = {
-                    "prompt_version": "sector_v1",
-                    "ticker": ticker,
-                    "ticker_sector": target_sector,
-                    "sector_etf": sector_performance.get("symbol", ""),
-                    "sector_momentum_1m": round(sector_momentum_1m, 4),
-                    "sector_rs_vs_spy": round(sector_rs_vs_spy, 4),
-                    "sector_rank": 0,  # Not applicable for single sector
-                    "sector_score": round(sector_momentum_1m / 100, 4),  # Normalize to -1..1 range
-                }
-            else:
-                # For all-sector analysis
-                ranking = sector_performance.get("rotation_signals", {}).get("ranking", [])
-                top_3 = ranking[:3] if len(ranking) >= 3 else ranking
-                bottom_3 = ranking[-3:] if len(ranking) >= 3 else []
-
-                # Compute sector score from top sector performance
-                top_sector_data = {}
-                if top_3:
-                    top_sector_symbol = top_3[0]
-                    top_sector_data = sector_performance.get(top_sector_symbol, {})
-
-                llm_input = {
-                    "prompt_version": "sector_v1",
-                    "ticker": ticker,
-                    "ticker_sector": target_sector or "all",
-                    "sector_etf": top_sector_data.get("name", "") if top_sector_data else "",
-                    "sector_momentum_1m": round(top_sector_data.get("1m_return", 0.0), 4),
-                    "sector_rs_vs_spy": round(top_sector_data.get("1m_return", 0.0), 4),
-                    "sector_rank": 1,  # Top sector rank
-                    "sector_score": round(top_sector_data.get("1m_return", 0.0) / 100, 4),
-                }
+            llm_input = {
+                "prompt_version": "sector_v1",
+                "ticker": ticker,
+                "ticker_sector": spdr_sector or "Unknown",
+                "sector_etf": sector_etf_symbol or "N/A",
+                "sector_momentum_1m": round(sector_momentum_1m, 4),
+                "sector_rs_vs_spy": round(sector_rs_vs_spy, 4),
+                "sector_rank": sector_rank if sector_rank is not None else 6,  # default to mid-rank
+                "sector_score": round(sector_momentum_1m / 100, 4),  # Normalize to -1..1 range
+            }
 
             # Try LLM cache first
             llm_response = await redis_client.get_llm_narrative("sector", llm_input)
@@ -99,24 +109,28 @@ class SectorAgent:
                 Sector Performance Summary:
                 """
 
-                # If we have sector data for a specific sector, show just that
-                if target_sector and isinstance(sector_performance, dict) and "name" in sector_performance:
-                    prompt += f"\nTarget Sector ({target_sector}): {sector_performance.get('name', target_sector)}"
-                    if "1m_return" in sector_performance:
-                        prompt += f" - 1-month return: {sector_performance.get('1m_return', 0.0):+.2f}%"
+                # Show the ticker's specific sector ETF data (always available now)
+                target_sector = spdr_sector or "Unknown"
+                if sector_etf_data and isinstance(sector_etf_data, dict):
+                    prompt += f"\nTarget Sector ({target_sector}): {sector_etf_data.get('name', target_sector)}"
+                    if "1m_return" in sector_etf_data:
+                        prompt += f" - 1-month return: {sector_etf_data.get('1m_return', 0.0):+.2f}%"
+                    if sector_rank:
+                        prompt += f" - sector rank: {sector_rank}/11"
                 else:
-                    # Add top 3 and bottom 3 sectors for brevity
-                    rotation_signals = sector_performance.get("rotation_signals", {})
-                    ranking = rotation_signals.get("ranking", [])
-                    if ranking:
-                        top_3 = ranking[:3] if len(ranking) >= 3 else ranking
-                        bottom_3 = ranking[-3:] if len(ranking) >= 3 else []
-                        prompt += f"\nTop Performing Sectors: {', '.join(top_3)}"
-                        prompt += f"\nBottom Performing Sectors: {', '.join(bottom_3)}"
+                    prompt += f"\nTarget Sector: {target_sector} (sector ETF data unavailable)"
 
-                    # Add specific sector data for context
+                # Add overall sector rotation context for relative positioning
+                rotation_signals = overall_rotation.get("rotation_signals", {})
+                ranking = rotation_signals.get("ranking", [])
+                if ranking:
+                    top_3 = ranking[:3] if len(ranking) >= 3 else ranking
+                    bottom_3 = ranking[-3:] if len(ranking) >= 3 else []
+                    prompt += f"\nTop Performing Sectors: {', '.join(top_3)}"
+                    prompt += f"\nBottom Performing Sectors: {', '.join(bottom_3)}"
+
                     prompt += "\n\nDetailed Sector Data (1-month returns):\n"
-                    for symbol, data in sector_performance.items():
+                    for symbol, data in overall_rotation.items():
                         if symbol != "rotation_signals" and isinstance(data, dict) and "1m_return" in data:
                             prompt += f"- {data.get('name', symbol)} ({symbol}): {data.get('1m_return', 0.0):+.2f}%\n"
 
@@ -170,8 +184,8 @@ class SectorAgent:
             # Build LLM narrative for the reasoning field
             outlook = analysis.get('outlook', '')
             sector_score = analysis.get("sector_score", llm_input.get("sector_score", 0.0))
-            ticker_sector = llm_input.get("ticker_sector", "Tech")
-            sector_rank = llm_input.get("sector_rank", 1)
+            ticker_sector = llm_input.get("ticker_sector", "Unknown")
+            sector_rank = llm_input.get("sector_rank", 6)
             narrative = f"[sector] {outlook}" if outlook else f"[sector] {ticker_sector} sector ranks {sector_rank}/11 with a score of {sector_score:+.3f}."
             # Get sector_score from llm_input (already computed)
             sector_score = llm_input.get("sector_score", 0.0)
@@ -180,6 +194,9 @@ class SectorAgent:
                 "analysis": {
                     **analysis,
                     "sector_score": sector_score,
+                    "ticker_sector": ticker_sector,
+                    "sector_etf": llm_input.get("sector_etf", "N/A"),
+                    "sector_rank": sector_rank,
                 },
                 "timestamp": sector_performance.get("timestamp", None),
                 "reasoning": [narrative]

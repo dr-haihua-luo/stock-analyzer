@@ -135,6 +135,8 @@ def _finviz_fundamentals_from_dict(data: dict) -> "FinvizFundamentals":
         insider_sells_90d=data.get("insider_sells_90d"),
         recent_analyst_actions=data.get("recent_analyst_actions", []),
         fetched_at=data.get("fetched_at", ""),
+        sector=data.get("sector"),
+        industry=data.get("industry"),
     )
 
 
