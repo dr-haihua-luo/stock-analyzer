@@ -13,6 +13,7 @@ from backend.signal.models import (
     EarningsQualityDisplay,
     QuarterlyDataPoint,
     StockContextDisplay,
+    PriceRangeProjection, PriceRangeHorizon, PriceRangeLevel,
 )
 from backend.agents.graph import analysis_graph
 from backend.data.stocktwits_data import fetch_stocktwits_sentiment
@@ -58,6 +59,28 @@ def _extract_narrative(reasoning: list, agent: str) -> Optional[str]:
         if isinstance(entry, str) and entry.startswith(f"[{agent}]"):
             return entry[len(f"[{agent}]"):].strip()
     return None
+
+
+def _build_price_range_projection(raw: dict) -> Optional[PriceRangeProjection]:
+    """Build a PriceRangeProjection model from the raw dict from stock_agent."""
+    ranges = raw.get("ranges", {})
+
+    def _to_horizon(h: dict) -> PriceRangeHorizon:
+        return PriceRangeHorizon(
+            **{
+                "68pct": PriceRangeLevel(**h["68pct"]),
+                "90pct": PriceRangeLevel(**h["90pct"]),
+                "95pct": PriceRangeLevel(**h["95pct"]),
+            }
+        )
+
+    return PriceRangeProjection(
+        daily_volatility_pct=raw.get("daily_volatility_pct"),
+        vix_adjustment_applied=raw.get("vix_adjustment_applied", False),
+        vix_multiplier=raw.get("vix_multiplier"),
+        two_week=_to_horizon(ranges["2_week"]) if "2_week" in ranges else None,
+        one_month=_to_horizon(ranges["1_month"]) if "1_month" in ranges else None,
+    )
 
 router = APIRouter()
 
@@ -290,7 +313,15 @@ async def analyze_ticker(
                 medium_term_ma_value=stock_data.get("medium_term_ma_value"),
                 short_term_ma_trend=stock_data.get("short_term_ma_trend"),
                 short_term_ma_value=stock_data.get("short_term_ma_value"),
+                price_range_projection=_build_price_range_projection(
+                    stock_data.get("price_range_projection")
+                ) if stock_data.get("price_range_projection") else None,
             ).model_dump()
+
+        # Attach price_range_projection to top-level SignalOutput
+        signal_output["price_range_projection"] = _build_price_range_projection(
+            stock_data.get("price_range_projection")
+        ) if stock_data.get("price_range_projection") else None
 
         # Save signal to database (background task)
         background_tasks.add_task(

@@ -9,6 +9,7 @@ from backend.data.stock_data import (
     compute_technical_score,
     compute_ma_trends,
     fetch_news_sentiment,
+    compute_price_range_projection,
 )
 from backend.data.fundamentals_data import fetch_fundamentals, FundamentalsResult
 from backend.data.earnings_quality_cache import get_earnings_quality
@@ -54,6 +55,20 @@ class StockAgent:
 
             # 6. Moving average trends (informational only)
             ma_trends = compute_ma_trends(df)
+
+            # 6. Statistical price range projection (volatility-based, informational only)
+            # VIX regime is derived from market_agent's computed VIX value in state
+            vix_val = (state.get("market_data") or {}).get("vix") or {}
+            vix_value = vix_val.get("vix")
+            vix_regime = None
+            if vix_value is not None:
+                if vix_value < 20:
+                    vix_regime = "low"
+                elif vix_value < 25:
+                    vix_regime = "normal"
+                else:
+                    vix_regime = "high"
+            price_range = compute_price_range_projection(df, current_price, vix_regime=vix_regime)
 
             # 6. Fetch real fundamentals from FinViz + TipRanks
             # TipRanks can be skipped via state flag to preserve rate limit
@@ -193,6 +208,7 @@ class StockAgent:
                 "medium_term_ma_value": ma_trends.get("medium_term_ma_value"),
                 "short_term_ma_trend": ma_trends.get("short_term_ma_trend"),
                 "short_term_ma_value": ma_trends.get("short_term_ma_value"),
+                "price_range_projection": price_range,
             }
 
             # Analysis result (what the LLM produced)

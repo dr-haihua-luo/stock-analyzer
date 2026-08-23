@@ -46,6 +46,9 @@ class StockContext(BaseModel):
     short_term_ma_trend: Optional[str] = None     # "up" | "down"
     short_term_ma_value: Optional[float] = None
 
+    # Price range projection (informational only, does not affect signal)
+    price_range_projection: Optional[dict] = None
+
 
 class MarketContext(BaseModel):
     # --- existing fields ---

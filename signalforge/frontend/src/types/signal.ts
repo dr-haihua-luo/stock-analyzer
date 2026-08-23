@@ -122,6 +122,25 @@ export interface StockContextDisplay {
   disclaimer?: string;
 }
 
+export interface PriceRangeLevel {
+  low: number;
+  high: number;
+}
+
+export interface PriceRangeHorizon {
+  '68pct': PriceRangeLevel;
+  '90pct': PriceRangeLevel;
+  '95pct': PriceRangeLevel;
+}
+
+export interface PriceRangeProjection {
+  daily_volatility_pct: number | null;
+  vix_adjustment_applied: boolean;
+  vix_multiplier: number | null;
+  '2_week': PriceRangeHorizon | null;
+  '1_month': PriceRangeHorizon | null;
+}
+
 export interface SignalOutput {
   ticker: string;
   signal: 'BUY' | 'HOLD' | 'SELL';
@@ -147,6 +166,7 @@ export interface SignalOutput {
   sector_economic_implications?: string | null;
   sector_momentum_assessment?: string | null;
   sector_outlook?: string | null;
+  price_range_projection?: PriceRangeProjection | null;
 }
 
 export interface ConfidenceBreakdown {

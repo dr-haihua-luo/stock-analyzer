@@ -9,6 +9,7 @@ import ConfidenceBreakdown from './components/ConfidenceBreakdown';
 import FundamentalPanel from './components/FundamentalPanel';
 import EarningsQualityPanel from './components/EarningsQualityPanel';
 import SentimentPanel from './components/SentimentPanel';
+import PriceRangePanel from './components/PriceRangePanel';
 import NewsSentimentPanel from './components/NewsSentimentPanel';
 import PerformanceReportPanel from './components/PerformanceReport';
 import OverallAnalysisPanel from './components/OverallAnalysisPanel';
@@ -120,6 +121,13 @@ function App() {
                 loading={loading}
               />
             </div>
+
+            {/* Statistical Price Range Projection (volatility-based, informational only) */}
+            <PriceRangePanel
+              data={analysisResult?.signal?.price_range_projection}
+              currentPrice={analysisResult?.signal?.stock_context?.current_price}
+              loading={loading}
+            />
 
             {/* Overall Verdict — final synthesized 6-month outlook */}
             <OverallAnalysisPanel

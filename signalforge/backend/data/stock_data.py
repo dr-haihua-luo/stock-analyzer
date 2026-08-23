@@ -16,7 +16,7 @@ from alpaca.data.historical.news import NewsClient
 from alpaca.data.requests import (
     NewsRequest,
     StockBarsRequest,
-    StockLatestQuoteRequest,
+    StockLatestTradeRequest,
     StockSnapshotRequest,
 )
 from alpaca.data.timeframe import TimeFrame
@@ -109,7 +109,7 @@ async def fetch_ohlcv(ticker: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 async def fetch_latest_price(ticker: str) -> float:
     """
-    Returns the latest ask price (falls back to last trade price).
+    Returns the latest traded price (last trade) from Alpaca.
     Uses Redis caching to prevent signal instability from quote tick noise.
     """
     cache_key = f"data:price:{ticker.upper()}"
@@ -118,12 +118,12 @@ async def fetch_latest_price(ticker: str) -> float:
     if cached:
         return float(cached)
 
-    request = StockLatestQuoteRequest(symbol_or_symbols=ticker)
-    quotes  = _stock_client.get_stock_latest_quote(request)
-    quote   = quotes[ticker]
+    request = StockLatestTradeRequest(symbol_or_symbols=ticker, feed=DataFeed.IEX)
+    trades  = _stock_client.get_stock_latest_trade(request)
+    trade   = trades[ticker]
 
-    logger.info(f"Stock latest quote {ticker} data received: {quote}")
-    price   = quote.ask_price or quote.bid_price
+    logger.info(f"Stock latest trade {ticker} data received: {trade}")
+    price   = trade.price
     if not price or price <= 0:
         raise ValueError(f"Could not retrieve valid latest price for {ticker}")
 
@@ -263,6 +263,111 @@ def compute_technical_score(technicals: dict, price_vs_52w_high: float) -> float
         score -= 0.15
 
     return round(max(-1.0, min(1.0, score)), 4)
+
+
+# ---------------------------------------------------------------------------
+# Price range projection — volatility-based statistical projection
+# ---------------------------------------------------------------------------
+def compute_price_range_projection(
+    df: pd.DataFrame,
+    current_price: float,
+    vix_regime: Optional[str] = None,
+) -> dict:
+    """
+    Computes statistically-projected price ranges at 68%, 90%, and
+    95% confidence levels for 2-week (10 trading days) and 1-month
+    (21 trading days) horizons.
+
+    This is a VOLATILITY-BASED STATISTICAL PROJECTION, not a
+    prediction. It answers: "given how much this stock has moved
+    historically, what price range would we expect X% of the time?"
+    It says nothing about DIRECTION — ranges are always centered on
+    the current price.
+
+    Method: log-normal price distribution using realized volatility
+    (annualized std dev of daily log returns), scaled by sqrt(time)
+    per the standard random-walk assumption for equity prices.
+
+    VIX regime adjustment: when implied vol (VIX regime) suggests
+    more uncertainty than the stock's own recent realized vol, the
+    range widens using a regime multiplier. Never narrows — realized
+    vol is treated as a floor.
+
+    Returns dict with keys:
+      daily_volatility_pct   — annualized realized vol %
+      vix_adjustment_applied — bool
+      ranges: {
+        "2_week": {
+          "68pct": {"low": float, "high": float},
+          "90pct": {"low": float, "high": float},
+          "95pct": {"low": float, "high": float},
+        },
+        "1_month": { ... same structure ... }
+      }
+    """
+
+    close = df["close"]
+
+    if len(close) < 30:
+        return {
+            "daily_volatility_pct": None,
+            "vix_adjustment_applied": False,
+            "ranges": {},
+        }
+
+    # Log returns — standard for volatility calculations
+    log_returns = np.log(close / close.shift(1)).dropna()
+
+    # Use the most recent 60 trading days for realized vol —
+    # long enough to smooth noise, short enough to reflect current regime
+    recent_returns = log_returns.iloc[-60:] if len(log_returns) >= 60 else log_returns
+
+    daily_sigma = float(recent_returns.std())
+    annualized_sigma = daily_sigma * np.sqrt(252)
+
+    # VIX regime multiplier — widen if implied vol regime suggests
+    # more uncertainty than recent realized vol indicates.
+    # Never narrows below realized vol (multiplier floor is 1.0).
+    VIX_MULTIPLIERS = {
+        "low": 1.00,
+        "normal": 1.00,
+        "elevated": 1.10,
+        "high": 1.25,
+        "extreme": 1.50,
+    }
+    multiplier = VIX_MULTIPLIERS.get(vix_regime, 1.00)
+    adjusted_sigma = daily_sigma * multiplier
+    vix_adjustment_applied = multiplier > 1.00
+
+    Z_SCORES = {
+        "68pct": 1.000,   # ~1 standard deviation
+        "90pct": 1.645,
+        "95pct": 1.960,
+    }
+    HORIZONS = {
+        "2_week": 10,    # trading days
+        "1_month": 21,
+    }
+
+    ranges = {}
+    for horizon_label, trading_days in HORIZONS.items():
+        horizon_ranges = {}
+        for conf_label, z in Z_SCORES.items():
+            move = adjusted_sigma * z * np.sqrt(trading_days)
+            upper = current_price * np.exp(move)
+            lower = current_price * np.exp(-move)
+            horizon_ranges[conf_label] = {
+                "low": round(float(lower), 2),
+                "high": round(float(upper), 2),
+            }
+        ranges[horizon_label] = horizon_ranges
+
+    return {
+        "daily_volatility_pct": round(annualized_sigma * 100, 2),
+        "vix_adjustment_applied": vix_adjustment_applied,
+        "vix_multiplier": round(multiplier, 2),
+        "ranges": ranges,
+    }
 
 
 # ---------------------------------------------------------------------------

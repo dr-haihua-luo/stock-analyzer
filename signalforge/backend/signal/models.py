@@ -127,6 +127,27 @@ class FundamentalsDisplay(BaseModel):
     )
 
 
+class PriceRangeLevel(BaseModel):
+    low: float
+    high: float
+
+
+class PriceRangeHorizon(BaseModel):
+    pct68: PriceRangeLevel = Field(alias="68pct")
+    pct90: PriceRangeLevel = Field(alias="90pct")
+    pct95: PriceRangeLevel = Field(alias="95pct")
+    model_config = {"populate_by_name": True}
+
+
+class PriceRangeProjection(BaseModel):
+    daily_volatility_pct: Optional[float] = None
+    vix_adjustment_applied: bool = False
+    vix_multiplier: Optional[float] = None
+    two_week: Optional[PriceRangeHorizon] = Field(None, alias="2_week")
+    one_month: Optional[PriceRangeHorizon] = Field(None, alias="1_month")
+    model_config = {"populate_by_name": True}
+
+
 class StockContextDisplay(BaseModel):
     """Stock context surfaced to the frontend — includes MA trend indicators."""
     ticker: str
@@ -145,6 +166,7 @@ class StockContextDisplay(BaseModel):
     medium_term_ma_value: Optional[float] = None
     short_term_ma_trend: Optional[str] = None      # "up" | "down"
     short_term_ma_value: Optional[float] = None
+    price_range_projection: Optional[PriceRangeProjection] = None
     disclaimer: str = (
         "MA trend indicators are informational only and do not affect "
         "the BUY/HOLD/SELL signal or confidence score."
@@ -177,6 +199,7 @@ class SignalOutput(BaseModel):
     sector_economic_implications: Optional[str] = None
     sector_momentum_assessment: Optional[str] = None
     sector_outlook: Optional[str] = None
+    price_range_projection: Optional[PriceRangeProjection] = None
 
 
 class ConfidenceBreakdown(BaseModel):
