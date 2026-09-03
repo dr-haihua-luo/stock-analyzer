@@ -78,6 +78,8 @@ def _build_price_range_projection(raw: dict) -> Optional[PriceRangeProjection]:
         daily_volatility_pct=raw.get("daily_volatility_pct"),
         vix_adjustment_applied=raw.get("vix_adjustment_applied", False),
         vix_multiplier=raw.get("vix_multiplier"),
+        two_day=_to_horizon(ranges["2_day"]) if "2_day" in ranges else None,
+        one_week=_to_horizon(ranges["1_week"]) if "1_week" in ranges else None,
         two_week=_to_horizon(ranges["2_week"]) if "2_week" in ranges else None,
         one_month=_to_horizon(ranges["1_month"]) if "1_month" in ranges else None,
     )

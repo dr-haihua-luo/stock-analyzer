@@ -137,6 +137,8 @@ export interface PriceRangeProjection {
   daily_volatility_pct: number | null;
   vix_adjustment_applied: boolean;
   vix_multiplier: number | null;
+  '2_day': PriceRangeHorizon | null;
+  '1_week': PriceRangeHorizon | null;
   '2_week': PriceRangeHorizon | null;
   '1_month': PriceRangeHorizon | null;
 }

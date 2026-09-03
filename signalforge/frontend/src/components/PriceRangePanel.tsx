@@ -49,6 +49,8 @@ export default function PriceRangePanel({ data, currentPrice, loading }: Props) 
 
   if (!data || !currentPrice) return null;
 
+  const twoDay = data['2_day'];
+  const oneWeek = data['1_week'];
   const twoWeek = data['2_week'];
   const oneMonth = data['1_month'];
 
@@ -84,7 +86,53 @@ export default function PriceRangePanel({ data, currentPrice, loading }: Props) 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+        {/* 2-day horizon */}
+        <div>
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+            2-Day Range
+          </h3>
+          {twoDay && (
+            <>
+              <RangeBar
+                low={twoDay['90pct'].low}
+                high={twoDay['90pct'].high}
+                current={currentPrice}
+                confLabel="90%"
+              />
+              <RangeBar
+                low={twoDay['68pct'].low}
+                high={twoDay['68pct'].high}
+                current={currentPrice}
+                confLabel="68%"
+              />
+            </>
+          )}
+        </div>
+
+        {/* 1-week horizon */}
+        <div>
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+            1-Week Range
+          </h3>
+          {oneWeek && (
+            <>
+              <RangeBar
+                low={oneWeek['90pct'].low}
+                high={oneWeek['90pct'].high}
+                current={currentPrice}
+                confLabel="90%"
+              />
+              <RangeBar
+                low={oneWeek['68pct'].low}
+                high={oneWeek['68pct'].high}
+                current={currentPrice}
+                confLabel="68%"
+              />
+            </>
+          )}
+        </div>
+
         {/* 2-week horizon */}
         <div>
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">

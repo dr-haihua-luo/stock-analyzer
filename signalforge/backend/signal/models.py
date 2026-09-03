@@ -143,6 +143,8 @@ class PriceRangeProjection(BaseModel):
     daily_volatility_pct: Optional[float] = None
     vix_adjustment_applied: bool = False
     vix_multiplier: Optional[float] = None
+    two_day: Optional[PriceRangeHorizon] = Field(None, alias="2_day")
+    one_week: Optional[PriceRangeHorizon] = Field(None, alias="1_week")
     two_week: Optional[PriceRangeHorizon] = Field(None, alias="2_week")
     one_month: Optional[PriceRangeHorizon] = Field(None, alias="1_month")
     model_config = {"populate_by_name": True}

@@ -275,8 +275,8 @@ def compute_price_range_projection(
 ) -> dict:
     """
     Computes statistically-projected price ranges at 68%, 90%, and
-    95% confidence levels for 2-week (10 trading days) and 1-month
-    (21 trading days) horizons.
+    95% confidence levels for 2-day, 1-week, 2-week, and 1-month
+    horizons.
 
     This is a VOLATILITY-BASED STATISTICAL PROJECTION, not a
     prediction. It answers: "given how much this stock has moved
@@ -297,12 +297,10 @@ def compute_price_range_projection(
       daily_volatility_pct   — annualized realized vol %
       vix_adjustment_applied — bool
       ranges: {
-        "2_week": {
-          "68pct": {"low": float, "high": float},
-          "90pct": {"low": float, "high": float},
-          "95pct": {"low": float, "high": float},
-        },
-        "1_month": { ... same structure ... }
+        "2_day":   { "68pct": {...}, "90pct": {...}, "95pct": {...} },
+        "1_week":  { ... },
+        "2_week":  { ... },
+        "1_month": { ... },
       }
     """
 
@@ -345,8 +343,10 @@ def compute_price_range_projection(
         "95pct": 1.960,
     }
     HORIZONS = {
-        "2_week": 10,    # trading days
-        "1_month": 21,
+        "2_day":   2,     # 2 trading days
+        "1_week":  5,     # 5 trading days
+        "2_week":  10,    # existing
+        "1_month": 21,    # existing
     }
 
     ranges = {}
