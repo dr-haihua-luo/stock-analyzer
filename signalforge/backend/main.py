@@ -99,7 +99,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "backend.main:app",
-        host=settings.HOST,
-        port=settings.PORT,
+        host=settings.BACKEND_HOST,
+        port=settings.BACKEND_PORT,
         reload=settings.DEBUG
     )

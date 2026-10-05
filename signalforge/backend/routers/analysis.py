@@ -17,6 +17,7 @@ from backend.signal.models import (
 )
 from backend.agents.graph import analysis_graph
 from backend.data.stocktwits_data import fetch_stocktwits_sentiment
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -42,6 +43,23 @@ async def _get_previous_signal(db: AsyncSession, ticker: str) -> Optional[str]:
     result = await db.execute(stmt)
     row = result.scalar_one_or_none()
     return row
+
+
+def _coerce_str(value) -> Optional[str]:
+    """
+    Coerce non-string values to strings for Optional[str] model fields.
+
+    The sector LLM may return dicts (e.g. {"cycle_signal": "..."}) instead of
+    plain strings for fields the model expects to be Optional[str]. This
+    guarantees the AnalysisResponse model validation always succeeds.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, indent=2, default=str)
+    return str(value)
 
 
 def _extract_narrative(reasoning: list, agent: str) -> Optional[str]:
@@ -168,9 +186,9 @@ async def analyze_ticker(
         )
 
         # Extract market LLM fields
-        signal_output["market_macro"] = market_analysis.get("MACRO")
-        signal_output["market_rates_fx"] = market_analysis.get("RATES & FX")
-        signal_output["market_regime"] = market_analysis.get("REGIME")
+        signal_output["market_macro"] = _coerce_str(market_analysis.get("MACRO"))
+        signal_output["market_rates_fx"] = _coerce_str(market_analysis.get("RATES & FX"))
+        signal_output["market_regime"] = _coerce_str(market_analysis.get("REGIME"))
 
         # Extract sector LLM fields (sector_narrative already set above)
         # rotation_momentum may be a dict with leading/lagging sector lists
@@ -190,9 +208,9 @@ async def analyze_ticker(
                 "; ".join(_parts) if _parts else str(rotation_momentum))
         else:
             signal_output["sector_rotation_momentum"] = rotation_momentum
-        signal_output["sector_economic_implications"] = sector_analysis.get("economic_implications")
-        signal_output["sector_momentum_assessment"] = sector_analysis.get("momentum_assessment")
-        signal_output["sector_outlook"] = sector_analysis.get("outlook")
+        signal_output["sector_economic_implications"] = _coerce_str(sector_analysis.get("economic_implications"))
+        signal_output["sector_momentum_assessment"] = _coerce_str(sector_analysis.get("momentum_assessment"))
+        signal_output["sector_outlook"] = _coerce_str(sector_analysis.get("outlook"))
 
         # Build FundamentalsDisplay from state
         raw_fund = final_state.get("fundamentals")

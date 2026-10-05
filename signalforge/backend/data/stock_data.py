@@ -428,35 +428,35 @@ def fetch_news_sentiment(ticker: str) -> tuple:
 # ---------------------------------------------------------------------------
 # Fundamental score proxy (Alpaca does not provide P/E natively)
 # ---------------------------------------------------------------------------
-def compute_fundamental_score(
-    df: pd.DataFrame,
-    price_vs_52w_high: float,
-) -> float:
-    """
-    Alpaca's market data API does not include P/E ratios. Compute a
-    fundamental proxy from price momentum and distance from 52-week high.
+# def compute_fundamental_score(
+#     df: pd.DataFrame,
+#     price_vs_52w_high: float,
+# ) -> float:
+#     """
+#     Alpaca's market data API does not include P/E ratios. Compute a
+#     fundamental proxy from price momentum and distance from 52-week high.
 
-    This is explicitly documented in the rationale output as a proxy.
-    If you later add a fundamentals provider (e.g. Polygon, FMP), replace
-    this function — the signature must remain identical.
-    """
-    score = 0.0
+#     This is explicitly documented in the rationale output as a proxy.
+#     If you later add a fundamentals provider (e.g. Polygon, FMP), replace
+#     this function — the signature must remain identical.
+#     """
+#     score = 0.0
 
-    # 1-month price momentum (weight 0.50)
-    if len(df) >= 21:
-        one_month_return = (df["close"].iloc[-1] / df["close"].iloc[-21] - 1)
-        score += 0.50 * max(-1.0, min(1.0, one_month_return * 5))
+#     # 1-month price momentum (weight 0.50)
+#     if len(df) >= 21:
+#         one_month_return = (df["close"].iloc[-1] / df["close"].iloc[-21] - 1)
+#         score += 0.50 * max(-1.0, min(1.0, one_month_return * 5))
 
-    # Distance from 52-week high (weight 0.50)
-    # Deep discount = bullish fundamental; near all-time high = less upside
-    if price_vs_52w_high < -30:
-        score += 0.50
-    elif price_vs_52w_high < -10:
-        score += 0.25
-    elif price_vs_52w_high > -5:
-        score -= 0.20
+#     # Distance from 52-week high (weight 0.50)
+#     # Deep discount = bullish fundamental; near all-time high = less upside
+#     if price_vs_52w_high < -30:
+#         score += 0.50
+#     elif price_vs_52w_high < -10:
+#         score += 0.25
+#     elif price_vs_52w_high > -5:
+#         score -= 0.20
 
-    return round(max(-1.0, min(1.0, score)), 4)
+#     return round(max(-1.0, min(1.0, score)), 4)
 
 
 # ---------------------------------------------------------------------------

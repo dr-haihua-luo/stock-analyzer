@@ -13,7 +13,7 @@ concise 6-month outlook verdict.
 - **Frontend**: React 18 + Vite + TypeScript + TailwindCSS + Recharts
 - **Backend**: Python 3.10+ + FastAPI + Pydantic v2
 - **Agent Framework**: LangGraph — deterministic state-machine orchestration
-- **LLM**: `openai/gpt-oss-20b:free`  via OpenRouter
+- **LLM**: `free model`  via OpenRouter
 - **Data sources**:
   - Alpaca Market Data — stock OHLCV bars, real-time quotes, news (primary stock feed)
   - yfinance — market indexes (S&P 500, Nasdaq) and sector-ETF data
@@ -105,8 +105,8 @@ API docs are available at `http://localhost:8000/docs`.
 |---|---|---|
 | `OPENROUTER_API_KEY` | Yes | Powers every LLM narrative |
 | `ALPACA_API_KEY_ID` / `ALPACA_API_SECRET_KEY` | Yes | Stock bars, quotes, news |
-| `DATABASE_URL` | Yes | PostgreSQL async URL |
-| `REDIS_URL` | Yes | Redis connection |
+| `POSTGRES_SERVER` | Yes | PostgreSQL async URL |
+| `REDIS_HOST` | Yes | Redis connection |
 | `FMP_API_KEY` | No | Earnings-quality panel (hidden if unset) |
 | `TIPRANKS_API_KEY` | No | Analyst ratings (free MCP tier) |
 | `FRED_API_KEY` | No | Some rate/inflation series |
