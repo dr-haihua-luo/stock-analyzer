@@ -143,11 +143,42 @@ export interface PriceRangeProjection {
   '1_month': PriceRangeHorizon | null;
 }
 
+export interface RelativeValuation {
+  pe_ratio: number;
+  sector_benchmark: number;
+  pct_vs_benchmark: number;
+  label: string;
+}
+
+export interface HorizonSignal {
+  horizon: string;
+  horizon_label: string;
+  signal: 'BUY' | 'HOLD' | 'SELL' | null;
+  confidence: number | null;
+  composite_score: number | null;
+  status: 'ok' | 'unavailable' | 'experimental';
+  reason?: string | null;
+  disclaimer?: string | null;
+  earnings_warning?: string | null;
+  relative_valuation?: RelativeValuation | null;
+  weights?: Record<string, number>;
+}
+
+export interface MultiHorizonSignals {
+  swing: HorizonSignal;
+  position: HorizonSignal;
+  day_trade: HorizonSignal;
+}
+
 export interface SignalOutput {
   ticker: string;
-  signal: 'BUY' | 'HOLD' | 'SELL';
-  confidence: number;
-  composite_score: number;
+  /** @deprecated Use signals.position instead */
+  signal?: 'BUY' | 'HOLD' | 'SELL' | null;
+  /** @deprecated Use signals.position.confidence instead */
+  confidence?: number | null;
+  /** @deprecated Use signals.position.composite_score instead */
+  composite_score?: number | null;
+  signals?: MultiHorizonSignals | null;
   timestamp: string;
   price_at_signal?: number | null;
   stocktwits_sentiment?: StockTwitsSentiment | null;
@@ -213,6 +244,7 @@ export interface PerformanceSummary {
 
 export interface PerformanceReport {
   ticker: string;
+  horizon: string;
   current_price: number | null;
   period: string;
   total_signals: number;

@@ -75,7 +75,7 @@ The application consists of:
   - `overall_analysis_agent.py`: Final 6-month outlook synthesis across all narratives + signal into VERDICT/REASONING/WATCH format
   - `llm_client.py`: OpenRouter API integration with primary/fallback model failover (`minimax/minimax-m3:free` / `z-ai/glm-5.2:free`)
 - `/signal`: Signal generation components
-  - `engine.py`: Weighted scoring engine with hysteresis and continuous confidence formula. Weights: market 20%, sector 30%, stock 50% (60% technical + 40% fundamental). BUY_THRESHOLD=0.6, SELL_THRESHOLD=-0.2, HYSTERESIS=0.03. Confidence = `min(abs(composite) / 0.8, 1.0)`
+  - `engine.py`: Three independent horizon-specific signal functions, each with its own weighting, thresholds, and hysteresis. `compute_swing_signal` (3-5 week, technical-dominant: 45% technical / 20% sector / 15% market / 10% news_sentiment / 10% fundamental, thresholds ±0.30), `compute_position_signal` (6-month, fundamental-dominant: 40% fundamental_blend / 20% market / 15% sector / 15% institutional / 10% technical, thresholds ±0.30), and `compute_day_trade_signal` (EXPERIMENTAL, Phase 2 placeholder: 40% volatility_regime / 40% mean_reversion / 20% volume, thresholds ±0.35). All share helpers: `_classify_with_hysteresis`, `_unavailable_signal`, `_trading_days_until`. `compute_all_signals()` is the top-level entry point. The deprecated `SignalEngine` class and `compute_signal()` are retained for backward compatibility. Confidence = `min(abs(composite) / 0.8, 1.0)` for swing/position; `min(abs(composite) / 0.7, 1.0) * 0.6` for day_trade (deliberately capped lower)
   - `models.py`: Pydantic models — `SignalOutput`, `ConfidenceBreakdown`, `AnalysisRequest`, `AnalysisResponse`, plus display models for `FundamentalsDisplay`, `EarningsQualityDisplay`, `StockTwitsSentiment`, `FinvizSnapshot`, `TipRanksSnapshot`, `StockContextDisplay`, `PriceRangeProjection`/`PriceRangeHorizon`/`PriceRangeLevel`, `QuarterlyDataPoint`
 - `/data`: Data collection modules
   - `market_data.py`: VIX, fear/greed, yield curve (via FRED/yfinance), indexes (S&P 500, Nasdaq, Dow, Russell), rates (US3M/10Y/30Y, Fed funds), FX (DXY, EURUSD, etc.), inflation expectations (breakeven rates via FRED with TIP ETF fallback). Standalone cached functions: `fetch_index_data`, `fetch_rate_data`, `fetch_fx_data`, `fetch_inflation_expectations`
@@ -129,7 +129,7 @@ The application consists of:
 - `docker-compose.yml`: Defines PostgreSQL, Redis, and backend services; backend container auto-runs Alembic migrations on boot
 - `Dockerfile`: Backend container (at `backend/Dockerfile`)
 - `pyproject.toml`: UV package management configuration with all dependencies
-- `alembic/`: Database migration scripts (2 migrations)
+- `alembic/`: Database migration scripts (3 migrations — 001 initial, 002 add price/composite, 003 add horizon for multi-horizon signals)
 - `alembic.ini`: Alembic configuration
 - `.env.example`: Template for environment variables 
 - `.env`: Local environment configuration (not committed)
@@ -185,7 +185,7 @@ extracts into the structured response fields.
 | 2 | `sector_analysis` | `sector_agent.py` | sector rotation & momentum → `sector_narrative`; independently determines ticker's sector via FinViz → `sector_narrative` |
 | 3 | `stock_analysis` | `stock_agent.py` | Alpaca OHLCV (500 days) + technicals (RSI/MACD/Bollinger) + FinViz/TipRanks fundamentals → `stock_narrative`; seeds `current_price` into state; also computes MA trends + statistical price range (informational only) |
 | 4 | `news_sentiment` | `news_sentiment_agent.py` | Alpaca news (10-day window) + StockTwits → `news_sentiment_narrative` (NEWS/SENTIMENT/OUTLOOK format) |
-| 5 | `signal_generation` | `engine.py` | weighted scoring → BUY/HOLD/SELL + confidence + composite score |
+| 5 | `signal_generation` | `engine.py` | three independent horizon signals (swing, position, day_trade) → `signals` dict in state |
 | 6 | `overall_analysis` | `overall_analysis_agent.py` | synthesizes all narratives + quantitative signal + current price into 6-month outlook → `overall_analysis_narrative` (VERDICT/REASONING/WATCH format) |
 
 **To understand the pipeline:**
@@ -194,8 +194,14 @@ extracts into the structured response fields.
 3. Review `/backend/agents/sector_agent.py` — FinViz sector determination, sector ETF fetch, rank computation
 4. Review `/backend/agents/stock_agent.py` — technicals, MA trends, price range projection, fundamentals
 5. Review `/backend/agents/news_sentiment_agent.py`, `overall_analysis_agent.py` — synthesis nodes
-6. Examine `/backend/signal/engine.py` — weighted scoring with hysteresis (BUY_THRESHOLD=0.6, SELL_THRESHOLD=-0.2, HYSTERESIS=0.03) and continuous confidence formula (`min(abs(composite) / 0.8, 1.0)`)
-7. Weights: market 20%, sector 30%, stock 50% (60% technical + 40% fundamental)
+6. Examine `/backend/signal/engine.py` — three independent horizon-specific signal functions:
+   - **`compute_swing_signal`** (3-5 week): technical-dominant — 45% technical / 20% sector / 15% market / 10% news_sentiment / 10% fundamental. Thresholds ±0.30, hysteresis 0.03. Flags earnings-date proximity as a risk warning.
+   - **`compute_position_signal`** (6-month): fundamental-dominant — 40% fundamental_blend (fundamentals + earnings quality) / 20% market / 15% sector / 15% institutional / 10% technical. Thresholds ±0.30, hysteresis 0.03. Reports relative valuation vs. sector P/E benchmark.
+   - **`compute_day_trade_signal`** (EXPERIMENTAL, Phase 2 placeholder): 40% volatility_regime / 40% mean_reversion / 20% volume. Thresholds ±0.35. Confidence scaled ×0.6 (capped lower). Requires intraday data in Phase 2.
+   - All three share helper logic: `_classify_with_hysteresis`, `_unavailable_signal`, `_trading_days_until`.
+   - `compute_all_signals()` returns `{"swing": {...}, "position": {...}, "day_trade": {...}}`.
+   - The deprecated `SignalEngine` class and `compute_signal()` (single blended) are retained for backward compatibility — `generate_signal()` delegates to `compute_all_signals()` and returns the position signal.
+7. Each signal is computed from the **same** `AnalysisState` but weights inputs appropriate to its horizon. Swing and position can legitimately disagree (e.g. bearish 6-month fundamentals + bullish short-term technicals). Only swing and position are persisted to the database; day_trade is excluded as experimental.
 
 
 ### LLM Response Caching
@@ -220,12 +226,12 @@ The API is mounted at `/api` (see `backend/routers/analysis.py`).
 |---|---|---|
 | `POST` | `/api/analyze` | Run the full 6-stage pipeline. Body: `{ "ticker": "AAPL", "skip_tipranks"?: true, "force_refresh"?: false }` |
 | `GET`  | `/api/signals/history` | Most recent signals from PostgreSQL |
-| `GET`  | `/api/performance/{ticker}` | Historical signal accuracy vs. live Alpaca price (12-month rolling window) |
+| `GET`  | `/api/performance/{ticker}` | Historical signal accuracy vs. live Alpaca price (12-month rolling window). Accepts `?horizon=swing` (default) or `?horizon=position` to filter by signal horizon. |
 
 `skip_tipranks` (default `true`) preserves the free-tier TipRanks rate limit (5 req/min, 50 req/month).
 
 **Response structure** (`AnalysisResponse`):
-- `signal`: `SignalOutput` — includes `price_range_projection`, `stock_context` (with MA trends), `fundamentals` (with institutional activity), `earnings_quality`, `stocktwits_sentiment`, all narrative fields, and market/sector LLM detail fields (MACRO, RATES & FX, REGIME, rotation momentum, etc.)
+- `signal`: `SignalOutput` — includes `signals` (`MultiHorizonSignals` with `swing`, `position`, `day_trade` `HorizonSignal` objects), plus `price_range_projection`, `stock_context` (with MA trends), `fundamentals` (with institutional activity), `earnings_quality`, `stocktwits_sentiment`, all narrative fields, and market/sector LLM detail fields (MACRO, RATES & FX, REGIME, rotation momentum, etc.). The deprecated `signal`/`confidence`/`composite_score` fields on `SignalOutput` are retained for backward compatibility — they mirror the **position** signal (6-month horizon).
 - `confidence_breakdown`: market/sector/technical/fundamental contributions
 - `analysis_details`: raw per-agent analysis dicts
 
@@ -270,7 +276,7 @@ Scoring components (with weights, normalized -1.0 to +1.0, redistributed proport
 ### Extending the Application
 - To add new data sources: Create new modules in `/backend/data/` following existing patterns (Redis cache + TTL, never raises, returns None on failure)
 - To add new analysis agents: Create new agent files in `/backend/agents/` and update the graph in `graph.py` (add node, add edge, add conditional edge for error handling)
-- To modify signal generation: Update the weighting logic and thresholds in `/backend/signal/engine.py`
+- To modify signal generation: Update the weighting logic and thresholds in `/backend/signal/engine.py`. Three horizon functions (`compute_swing_signal`, `compute_position_signal`, `compute_day_trade_signal`) each have independent weights, thresholds, and hysteresis. `compute_all_signals()` is the top-level entry point called by the `signal_generation` graph node.
 - To add new LLM narrative agents: Follow the caching pattern in `news_sentiment_agent.py` / `overall_analysis_agent.py` (cache key via `redis_client.get_llm_narrative()`, TTL varies by agent)
 - To add new UI components: Create new components in `/frontend/src/components/` and import them in `App.tsx`
 - To add informational stock metrics: Extend `StockContext`/`StockContextDisplay`/`AnalysisState` in `state.py` + `models.py`, compute in `stock_data.py`, pass through `stock_agent.py` and `routers/analysis.py`, render in a new frontend component
@@ -308,8 +314,10 @@ Scoring components (with weights, normalized -1.0 to +1.0, redistributed proport
 
 ## Known Issues
 
-1. **ConfidenceBreakdown weight legend**: `ConfidenceBreakdown.tsx` displays a legend reading "Market 25%, Sector 25%, Stock 50%", but the actual weights in `engine.py` are Market 20%, Sector 30%, Stock 50%. The legend text is hardcoded and does not match the engine constants.
+1. **ConfidenceBreakdown weight legend**: `ConfidenceBreakdown.tsx` displays a legend reading "Market 25%, Sector 25%, Stock 50%", but the actual weights in `engine.py` are Market 20%, Sector 30%, Stock 50%. The legend text is hardcoded and does not match the engine constants. Note: the new `HorizonSignalCard` component correctly displays per-horizon weights from the engine, so the new signal cards reflect the accurate weights.
 
 2. **MarketOverview.tsx uses mock data**: The `MarketOverview` and `SectorHeatmap` components on the default view (before analysis) render hardcoded mock data rather than calling the backend API. They are not connected to live data.
+
+3. **Day-trade signal is data-limited**: `compute_day_trade_signal()` is marked EXPERIMENTAL because it operates on daily-bar data only (VIX regime, RSI/Bollinger extremes, volume trend). It cannot replicate genuine intraday analysis (order book, bid-ask spread, opening range, options positioning). It is not persisted to the database. Phase 2 will integrate intraday feeds.
 
 

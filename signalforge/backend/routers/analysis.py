@@ -29,14 +29,14 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 
-async def _get_previous_signal(db: AsyncSession, ticker: str) -> Optional[str]:
+async def _get_previous_signal(db: AsyncSession, ticker: str, horizon: str = "swing") -> Optional[str]:
     """
-    Fetch the most recent signal for a ticker from PostgreSQL.
+    Fetch the most recent signal for a ticker+horizon from PostgreSQL.
     Returns the signal string (BUY/HOLD/SELL) or None if no previous signal exists.
     """
     stmt = (
         select(Signal.signal)
-        .where(Signal.ticker == ticker.upper())
+        .where(Signal.ticker == ticker.upper(), Signal.horizon == horizon)
         .order_by(desc(Signal.timestamp))
         .limit(1)
     )
@@ -121,15 +121,22 @@ async def analyze_ticker(
         # Fetch StockTwits BEFORE running the pipeline
         sentiment_raw = await fetch_stocktwits_sentiment(request.ticker.upper())
 
-        # Fetch previous signal for hysteresis
-        previous_signal = await _get_previous_signal(db, request.ticker)
-        logger.info(f"Previous signal for {request.ticker}: {previous_signal}")
+        # Fetch previous signals (per-horizon) for hysteresis
+        previous_swing = await _get_previous_signal(db, request.ticker, "swing")
+        previous_position = await _get_previous_signal(db, request.ticker, "position")
+        logger.info(
+            f"Previous signals for {request.ticker}: "
+            f"swing={previous_swing}, position={previous_position}"
+        )
 
         # Initialize state for the graph
         initial_state = {
             "ticker": request.ticker.upper(),
             "skip_tipranks": request.skip_tipranks,
-            "previous_signal": previous_signal,
+            "force_refresh": request.force_refresh,
+            "previous_signal": previous_swing,  # DEPRECATED — kept for backward compat
+            "previous_swing_signal": previous_swing,
+            "previous_position_signal": previous_position,
             "market_data": None,
             "sector_data": None,
             "stock_data": None,
@@ -366,26 +373,38 @@ async def analyze_ticker(
 
 
 async def save_signal_to_db(signal_output: dict, state: dict = None):
-    """Save signal output to database. Creates own session to handle background task safely."""
+    """Save signals to database — persists swing and position horizons only.
+
+    The day_trade signal is intentionally NOT persisted because it is
+    marked EXPERIMENTAL and should not influence historical accuracy
+    reporting or performance metrics.
+    """
     try:
-        # Create our own session for the background task
-        # The passed session may be closed by the time this runs
         async with AsyncSessionLocal() as session:
-            # Extract price from stock_data in state
+            ticker = signal_output["ticker"]
+            timestamp = signal_output["timestamp"]
             stock_data = state.get("stock_data", {}) if state else {}
             price_at_signal = stock_data.get("current_price") if stock_data else None
 
-            signal = Signal(
-                ticker=signal_output["ticker"],
-                signal=signal_output["signal"],
-                confidence=signal_output["confidence"],
-                timestamp=signal_output["timestamp"],
-                price_at_signal=price_at_signal,
-                composite_score=signal_output.get("composite_score"),
-            )
-            session.add(signal)
+            signals_map = signal_output.get("signals", {})
+            # Persist swing and position only
+            for horizon_key in ("swing", "position"):
+                hs = signals_map.get(horizon_key, {}) if isinstance(signals_map, dict) else {}
+                if not hs or hs.get("signal") is None:
+                    continue
+                signal = Signal(
+                    ticker=ticker,
+                    signal=hs["signal"],
+                    confidence=hs.get("confidence"),
+                    timestamp=timestamp,
+                    price_at_signal=price_at_signal,
+                    composite_score=hs.get("composite_score"),
+                    horizon=horizon_key,
+                )
+                session.add(signal)
+
             await session.commit()
-            logger.info(f"Saved signal for {signal_output['ticker']} to database")
+            logger.info(f"Saved swing + position signals for {ticker} to database")
     except Exception as e:
         logger.error(f"Error saving signal to database: {e}")
         # Silently fail - don't raise in background task to avoid affecting the main response
@@ -446,21 +465,26 @@ def _compute_outcome(signal: str, pct_change: Optional[float]) -> Optional[str]:
 @router.get("/performance/{ticker}")
 async def get_performance(
     ticker: str,
+    horizon: str = "swing",
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Returns all signals for a ticker in the past 12 months,
+    Returns signals for a ticker in the past 12 months, filtered by horizon,
     each with its historical price, signal type, composite score,
     and the current price fetched live from Alpaca.
+
+    Defaults to the swing horizon. Use horizon=position for the 6-month
+    position signal history.
     """
     ticker = ticker.upper()
     cutoff = datetime.utcnow() - timedelta(days=365)
 
-    # Fetch historical signals from PostgreSQL
+    # Fetch historical signals from PostgreSQL, filtered by horizon
     stmt = (
         select(Signal)
         .where(
             Signal.ticker == ticker,
+            Signal.horizon == horizon,
             Signal.timestamp >= cutoff,
         )
         .order_by(Signal.timestamp.asc())
@@ -510,6 +534,7 @@ async def get_performance(
 
     return {
         "ticker": ticker,
+        "horizon": horizon,
         "current_price": current_price,
         "period": "12 months",
         "total_signals": len(data_points),

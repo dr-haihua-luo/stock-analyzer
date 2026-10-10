@@ -175,12 +175,53 @@ class StockContextDisplay(BaseModel):
     )
 
 
+# ---------------------------------------------------------------------------
+# Multi-horizon signal models
+# ---------------------------------------------------------------------------
+
+class RelativeValuation(BaseModel):
+    """Stock PE vs its sector's benchmark PE — informational, position-only."""
+    pe_ratio: float
+    sector_benchmark: float
+    pct_vs_benchmark: float
+    label: str
+
+
+class HorizonSignal(BaseModel):
+    """
+    A signal computed for a specific time horizon.
+    Replaces the old single composite signal — swing and position are
+    the primary production signals; day_trade is experimental.
+    """
+    horizon: str
+    horizon_label: str
+    signal: Optional[str] = None            # "BUY" | "HOLD" | "SELL" | None (if unavailable)
+    confidence: Optional[float] = None
+    composite_score: Optional[float] = None
+    status: str = "ok"                       # "ok" | "unavailable" | "experimental"
+    reason: Optional[str] = None             # populated if status="unavailable"
+    disclaimer: Optional[str] = None         # populated for day_trade
+    earnings_warning: Optional[str] = None   # populated for swing (earnings-date proximity)
+    relative_valuation: Optional[RelativeValuation] = None  # populated for position
+    weights: dict = {}
+
+
+class MultiHorizonSignals(BaseModel):
+    """All three horizon signals computed from one AnalysisState."""
+    swing: HorizonSignal
+    position: HorizonSignal
+    day_trade: HorizonSignal
+
+
 class SignalOutput(BaseModel):
     """Final signal output from the analysis pipeline."""
     ticker: str = Field(description="Stock ticker symbol")
-    signal: str = Field(description="BUY, HOLD, or SELL signal")
-    confidence: float = Field(description="Confidence score from 0.0 to 1.0")
-    composite_score: float = Field(default=0.0, description="Composite score used for signal determination (-1.0 to +1.0)")
+    # DEPRECATED — kept for backward compatibility during transition.
+    # New code should read signals.swing / signals.position instead.
+    signal: Optional[str] = Field(default=None, description="BUY, HOLD, or SELL signal (deprecated — use signals.position)")
+    confidence: Optional[float] = Field(default=None, description="Confidence score from 0.0 to 1.0 (deprecated)")
+    composite_score: Optional[float] = Field(default=None, description="Composite score used for signal determination (-1.0 to +1.0) (deprecated)")
+    signals: Optional[MultiHorizonSignals] = None  # NEW — three independent horizon signals
     price_at_signal: Optional[float] = Field(default=None, description="Stock price when signal was generated")
     timestamp: datetime = Field(description="Analysis timestamp")
     stocktwits_sentiment: Optional[StockTwitsSentiment] = None

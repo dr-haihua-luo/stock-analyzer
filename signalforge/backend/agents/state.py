@@ -7,7 +7,10 @@ class AnalysisState(TypedDict):
     """State definition for the LangGraph analysis pipeline."""
     ticker: str
     skip_tipranks: bool
-    previous_signal: Optional[str]  # Previous signal for hysteresis
+    previous_signal: Optional[str]  # DEPRECATED — kept for backward compat
+    previous_swing_signal: Optional[str] = None      # for swing hysteresis
+    previous_position_signal: Optional[str] = None   # for position hysteresis
+    signals: Optional[Dict[str, Any]] = None        # three horizon signals from engine
     market_data: Optional[Dict[str, Any]]
     sector_data: Optional[Dict[str, Any]]
     stock_data: Optional[Dict[str, Any]]

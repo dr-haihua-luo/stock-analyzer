@@ -115,7 +115,12 @@ export default function PerformanceReportPanel({ report, loading, error, onClose
             <h2 className="text-xl font-bold text-white">
               Signal Performance Report
               {report && (
-                <span className="ml-2 text-blue-400">{report.ticker}</span>
+                <>
+                  <span className="ml-2 text-blue-400">{report.ticker}</span>
+                  <span className="ml-2 text-xs text-gray-500 font-medium">
+                    [{report.horizon === 'position' ? 'Position' : 'Swing'} horizon]
+                  </span>
+                </>
               )}
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">

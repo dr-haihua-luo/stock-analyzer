@@ -6,8 +6,9 @@ from backend.agents.sector_agent import SectorAgent
 from backend.agents.stock_agent import StockAgent
 from backend.agents.news_sentiment_agent import news_sentiment_node
 from backend.agents.overall_analysis_agent import overall_analysis_node
-from backend.signal.engine import SignalEngine
+from backend.signal.engine import compute_all_signals
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,6 @@ logger = logging.getLogger(__name__)
 market_agent = MarketAgent()
 sector_agent = SectorAgent()
 stock_agent = StockAgent()
-signal_engine = SignalEngine()
 
 
 async def market_analysis_node(state: AnalysisState) -> AnalysisState:
@@ -223,56 +223,101 @@ async def stock_analysis_node(state: AnalysisState) -> AnalysisState:
 
 
 async def signal_generation_node(state: AnalysisState) -> AnalysisState:
-    """Node for generating final signal."""
+    """Node for generating final signals (three horizon-specific)."""
     try:
         logger.info("Executing signal generation node")
 
-        # Ensure state is a dict and make a safe copy
         state_dict = dict(state) if state is not None else {}
 
-        # Safely get data with defaults to prevent None being passed to signal engine
-        market_data = state_dict.get("market_data") or {}
-        sector_data = state_dict.get("sector_data") or {}
-        stock_data = state_dict.get("stock_data") or {}
-        analysis_results = state_dict.get("analysis_result", {}) or {}
         ticker = state_dict.get("ticker", "") or ""
-        previous_signal = state_dict.get("previous_signal")
+        market_data = state_dict.get("market_data") or {}
+        analysis_result = state_dict.get("analysis_result", {}) or {}
+        stock_data = state_dict.get("stock_data") or {}
 
-        # Ensure all data is in expected dict format
-        if not isinstance(market_data, dict):
-            market_data = {}
-        if not isinstance(sector_data, dict):
-            sector_data = {}
-        if not isinstance(stock_data, dict):
-            stock_data = {}
-        if not isinstance(analysis_results, dict):
-            analysis_results = {}
+        # --- Build enriched engine_state from pipeline data ---
+        # market: analysis_result["market"] (has market_score + LLM JSON)
+        market = dict(analysis_result.get("market", {})) if isinstance(analysis_result.get("market"), dict) else {}
 
-        signal_result = await signal_engine.generate_signal(
-            market_data=market_data,
-            sector_data=sector_data,
-            stock_data=stock_data,
-            analysis_results=analysis_results,
-            ticker=ticker,
-            previous_signal=previous_signal,
+        # Enrich market with vix_regime derived from raw VIX value
+        # (market_analysis_node stores raw vix_data in state["market_data"]["vix"])
+        vix_raw = (market_data.get("vix") or {}) if isinstance(market_data, dict) else {}
+        vix_value = vix_raw.get("vix") if isinstance(vix_raw, dict) else None
+        if vix_value is not None:
+            if vix_value < 20:
+                market["vix_regime"] = "low"
+            elif vix_value < 25:
+                market["vix_regime"] = "normal"
+            else:
+                market["vix_regime"] = "high"
+
+        # sector: analysis_result["sector"] (has sector_score, ticker_sector)
+        sector = dict(analysis_result.get("sector", {})) if isinstance(analysis_result.get("sector"), dict) else {}
+
+        # stock: stock_data (has technical_score, fundamental_score, etc.)
+        stock = dict(stock_data) if isinstance(stock_data, dict) else {}
+
+        # Enrich stock with pe_ratio from fundamentals (stock_data has pe_ratio=None)
+        fundamentals = state_dict.get("fundamentals")
+        if fundamentals and getattr(fundamentals, "finviz", None):
+            fv = fundamentals.finviz
+            if stock.get("pe_ratio") is None and getattr(fv, "pe_ratio", None) is not None:
+                stock["pe_ratio"] = fv.pe_ratio
+
+        engine_state = {
+            "ticker": ticker,
+            "market": market,
+            "sector": sector,
+            "stock": stock,
+            "fundamentals": fundamentals,
+            "earnings_quality": state_dict.get("earnings_quality"),
+        }
+
+        # --- Compute all three horizon signals ---
+        previous_swing = state_dict.get("previous_swing_signal")
+        previous_position = state_dict.get("previous_position_signal")
+        # Fall back to legacy previous_signal if horizon-specific ones not set
+        if previous_swing is None:
+            previous_swing = state_dict.get("previous_signal")
+        if previous_position is None:
+            previous_position = state_dict.get("previous_signal")
+
+        all_signals = compute_all_signals(
+            engine_state,
+            previous_swing_signal=previous_swing,
+            previous_position_signal=previous_position,
         )
 
-        # Safely extract results from signal engine
-        signal_output = None
-        confidence_breakdown = None
+        # Store three-horizon signals in state
+        state["signals"] = all_signals
 
-        if isinstance(signal_result, dict):
-            signal_output = signal_result.get("signal_output")
-            confidence_breakdown = signal_result.get("confidence_breakdown")
+        # Build backward-compatible signal_output from the position signal
+        # (6-month horizon aligns with the overall_analysis_agent's outlook)
+        position = all_signals.get("position", {})
+        signal_output = {
+            "ticker": ticker,
+            "timestamp": datetime.utcnow(),
+            # Deprecated — retained for backward compat with
+            # overall_analysis_agent and the API response shape
+            "signal": position.get("signal"),
+            "confidence": position.get("confidence"),
+            "composite_score": position.get("composite_score"),
+            # NEW — three independent horizon signals
+            "signals": all_signals,
+        }
 
-            # Ensure extracted data is in expected format
-            if signal_output is not None and not isinstance(signal_output, dict):
-                signal_output = None
-            if confidence_breakdown is not None and not isinstance(confidence_breakdown, dict):
-                confidence_breakdown = None
+        # Confidence breakdown derived from position weights (backward compat)
+        market_contribution = float(market.get("market_score", 0.0) or 0.0)
+        sector_contribution = float(sector.get("sector_score", 0.0) or 0.0)
+        technical_contribution = float(stock.get("technical_score", 0.0) or 0.0)
+        fundamental_contribution = float(stock.get("fundamental_score", 0.0) or 0.0)
 
         state["signal_output"] = signal_output
-        state["confidence_breakdown"] = confidence_breakdown
+        state["confidence_breakdown"] = {
+            "market_contribution": round(market_contribution, 4),
+            "sector_contribution": round(sector_contribution, 4),
+            "technical_contribution": round(technical_contribution, 4),
+            "fundamental_contribution": round(fundamental_contribution, 4),
+        }
         return state
     except Exception as e:
         logger.error(f"Error in signal generation node: {e}")

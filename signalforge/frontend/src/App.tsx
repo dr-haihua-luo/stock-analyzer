@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAnalysis } from './hooks/useAnalysis';
 import { usePerformance } from './hooks/usePerformance';
 import SignalCard from './components/SignalCard';
+import HorizonSignalCard from './components/HorizonSignalCard';
 import MATrendBadges from './components/MATrendBadges';
 import MarketOverview from './components/MarketOverview';
 import SectorHeatmap from './components/SectorHeatmap';
@@ -22,6 +23,8 @@ function App() {
   const [skipTipranks, setSkipTipranks] = useState(true); // Default: skip TipRanks to preserve rate limit
 
   const { analyzeTicker } = useAnalysis();
+  const [reportHorizon, setReportHorizon] = useState<'swing' | 'position'>('swing');
+
   const {
     report, loading: reportLoading, error: reportError,
     visible: reportVisible, fetchReport, closeReport,
@@ -76,13 +79,13 @@ function App() {
               </button>
 
               <button
-                onClick={() => fetchReport(ticker)}
+                onClick={() => fetchReport(ticker, reportHorizon)}
                 disabled={!ticker.trim() || reportLoading}
                 className="px-5 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800
                            text-white text-sm font-semibold rounded-lg transition-colors
                            border border-gray-600"
               >
-                {reportLoading ? 'Loading...' : '📊 Report'}
+                {reportLoading ? 'Loading...' : `📊 ${reportHorizon === 'swing' ? 'Swing' : 'Position'} Report`}
               </button>
             </div>
             {/* TipRanks Toggle */}
@@ -102,6 +105,31 @@ function App() {
                   ? 'Free tier protected — FinViz only'
                   : 'Full analysis — TipRanks enabled'}
               </span>
+
+              {/* Horizon toggle for performance report */}
+              <div className="flex items-center gap-1 mt-2">
+                <span className="text-xs text-gray-500 mr-1">Report horizon:</span>
+                <button
+                  onClick={() => setReportHorizon('swing')}
+                  className={`px-2 py-1 text-xs font-medium rounded border transition-colors ${
+                    reportHorizon === 'swing'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                  }`}
+                >
+                  Swing
+                </button>
+                <button
+                  onClick={() => setReportHorizon('position')}
+                  className={`px-2 py-1 text-xs font-medium rounded border transition-colors ${
+                    reportHorizon === 'position'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                  }`}
+                >
+                  Position
+                </button>
+              </div>
             </div>
           </div>
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
@@ -109,8 +137,25 @@ function App() {
 
         {analysisResult ? (
           <>
-            {/* Signal Card */}
-            <SignalCard signal={analysisResult.signal} />
+            {/* Three Horizon Signal Cards */}
+            {analysisResult.signal?.signals ? (
+              <div className="grid gap-4 md:grid-cols-3">
+                <HorizonSignalCard
+                  horizonSignal={analysisResult.signal.signals.day_trade}
+                  showWeights={true}
+                />
+                <HorizonSignalCard
+                  horizonSignal={analysisResult.signal.signals.swing}
+                  showWeights={true}
+                />
+                <HorizonSignalCard
+                  horizonSignal={analysisResult.signal.signals.position}
+                  showWeights={true}
+                />
+              </div>
+            ) : (
+              <SignalCard signal={analysisResult.signal} />
+            )}
 
             {/* MA Trend Badges */}
             <div className="mt-6">

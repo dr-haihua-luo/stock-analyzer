@@ -7,13 +7,13 @@ export function usePerformance() {
   const [error, setError] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
 
-  const fetchReport = useCallback(async (ticker: string) => {
+  const fetchReport = useCallback(async (ticker: string, horizon: string = 'swing') => {
     if (!ticker.trim()) return;
     setLoading(true);
     setError(null);
     setVisible(true);
     try {
-      const response = await fetch(`/api/performance/${ticker.trim().toUpperCase()}`);
+      const response = await fetch(`/api/performance/${ticker.trim().toUpperCase()}?horizon=${horizon}`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail ?? 'Failed to load performance data');
