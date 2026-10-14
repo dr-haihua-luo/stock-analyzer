@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routers import analysis
+from backend.routers import analysis, speech
 from backend.config import settings
 from backend.cache.redis_client import redis_client
 import logging
@@ -33,6 +33,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(analysis.router, prefix="/api", tags=["analysis"])
+app.include_router(speech.router, prefix="/api", tags=["speech"])
 
 
 @app.on_event("startup")

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAnalysis } from './hooks/useAnalysis';
 import { usePerformance } from './hooks/usePerformance';
 import SignalCard from './components/SignalCard';
+import TickerInput from './components/TickerInput';
 import HorizonSignalCard from './components/HorizonSignalCard';
 import MATrendBadges from './components/MATrendBadges';
 import MarketOverview from './components/MarketOverview';
@@ -61,12 +62,11 @@ function App() {
         <div className="mb-6">
           <div className="flex flex-col max-w-xl">
             <div className="flex gap-2">
-              <input
-                type="text"
+              <TickerInput
                 value={ticker}
-                onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                placeholder="Enter stock ticker (e.g., AAPL, MSFT, GOOGL)"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={setTicker}
+                onSubmit={handleAnalyze}
+                disabled={loading}
               />
 
               <button

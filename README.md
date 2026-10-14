@@ -123,8 +123,37 @@ The API is mounted at `/api` (see `backend/routers/analysis.py`).
 | `GET`  | `/api/signals/history` | Most recent signals |
 | `GET`  | `/api/performance/{ticker}` | Historical signal accuracy vs. the live Alpaca price |
 
-`skip_tipranks` (default `true`) keeps free-tier TipRanks usage low; set it to
+`skip_tipranks` (default `true`) keeps free-tier TipRanks usage free; set it to
 `false` for full analyst coverage.
+
+## Voice Input
+
+The ticker search box supports speech-to-text via [Cactus Whistle](https://docs.cactus.chat/whistle)
+(pip package `cactus-needle`, import name `needle`).
+
+- **On-device, no network call at inference** — the model runs locally on CPU.
+- **Install**: `uv pip install cactus-needle` (already a dependency in `pyproject.toml`).
+- **How it works**: click the microphone icon in the ticker input, speak the
+  ticker or company name (e.g. "Apple", "NVDA", "Microsoft"), and the box is
+  filled with the recognized ticker. Recording stops automatically after 6
+  seconds. The result is **not** auto-submitted — review it and press Analyze as
+  usual.
+- **Browser requirements**: the microphone works on `https://` or
+  `http://localhost` only. Browsers block mic access on plain-`http` LAN addresses.
+- **First request latency**: the first transcription may take a few seconds while
+  the speech model downloads (~40 MB from Hugging Face). Subsequent calls are
+  fast (~100 ms on CPU).
+- **Company aliases**: a built-in alias table maps company names to tickers
+  (e.g. "meta platforms" → `META`, "jpmorgan" → `JPM`, "brka" → `BRK.B`).
+  Spelled-out letters are supported ("A A P L" → `AAPL`, "B R K dot B" → `BRK.B`).
+  To add more, extend the `COMPANY_ALIASES` dict in
+  `backend/speech/whistle_service.py`.
+
+### API endpoint
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/speech/transcribe` | Transcribe raw WAV bytes (16 kHz, mono, 16-bit, max 30 s) → `{"transcript": str, "ticker": str \| null, "latency_ms": int}` |
 
 ## License
 
